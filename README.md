@@ -151,16 +151,6 @@ node examples/render-test.js --duration=30
 node examples/render-test.js --duration=60 --width=1080 --height=1920
 ```
 
-## Production Stats
-
-From real YouTube renders using this toolkit:
-
-| Render | Frames | Resolution | Workers | Time | Avg FPS |
-|--------|--------|-----------|---------|------|---------|
-| COLOSSUS (2hr) | 432,000 | 1920x1080 | 8 | 11h 46m | 10.4 |
-
-*More benchmarks coming — run `render-test.js` and share yours!*
-
 ## License
 
 MIT
