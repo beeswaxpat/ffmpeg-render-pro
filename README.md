@@ -1,8 +1,27 @@
+```
+     ___  ___                                                 _
+    / __\/ __\_ __ ___  _ __   ___  __ _       _ __ ___ _ __ | |
+   / _\ / _\ | '_ ` _ \| '_ \ / _ \/ _` |_____| '__/ _ \ '_ \| |
+  / /  / /   | | | | | | |_) |  __/ (_| |_____| | |  __/ | | |_|
+  \/   \/    |_| |_| |_| .__/ \___|\__, |     |_|  \___|_| |_(_)
+                        |_|         |___/
+  ┌──────────────────────────────────────────────────────────────┐
+  │  P A R A L L E L   R E N D E R   E N G I N E   v 1 . 0     │
+  │  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░  8 WORKERS     │
+  │  GPU: AUTO-DETECT  │  DASHBOARD: LIVE  │  CONCAT: INSTANT   │
+  └──────────────────────────────────────────────────────────────┘
+```
+
 # ffmpeg-render-pro
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Platform: Cross-platform](https://img.shields.io/badge/Platform-Win%20%7C%20Mac%20%7C%20Linux-brightgreen)]()
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?logo=node.js&logoColor=white)]()
+[![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-orange)]()
 
 Parallel video rendering with live dashboard, GPU auto-detection, checkpoint system, and stream-copy concat. The most powerful free ffmpeg rendering toolkit.
 
-Built from real production experience rendering 2-hour, 432,000-frame ambient videos for YouTube.
+Built by [Beeswax Pat](https://github.com/beeswaxpat) with [Claude Code](https://claude.ai/claude-code) · Free and open source forever
 
 ## Features
 
