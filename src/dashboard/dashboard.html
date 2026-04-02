@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ffmpeg-render-pro — Dashboard</title>
+<style>
+  /* System monospace font stack — no external CDN dependencies */
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #05060f;
+    color: #c8d6e5;
+    font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
+    padding: 24px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background:
+      linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Subtle animated gradient orbs */
+  body::after {
+    content: '';
+    position: fixed;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background:
+      radial-gradient(ellipse at 20% 50%, rgba(0,212,255,0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(168,85,247,0.04) 0%, transparent 50%),
+      radial-gradient(ellipse at 60% 80%, rgba(0,255,136,0.04) 0%, transparent 50%);
+    animation: orbFloat 20s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  @keyframes orbFloat {
+    0%, 100% { transform: translate(0, 0) rotate(0deg); }
+    33% { transform: translate(2%, -1%) rotate(1deg); }
+    66% { transform: translate(-1%, 2%) rotate(-1deg); }
+  }
+
+  .container { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgba(0,212,255,0.1);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .logo-icon {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, #00d4ff, #a855f7);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 700;
+    color: #fff;
+    box-shadow: 0 0 20px rgba(0,212,255,0.3);
+  }
+
+  h1 {
+    font-size: 20px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #00d4ff, #a855f7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.5px;
+  }
+
+  .subtitle {
+    color: #475569;
+    font-size: 12px;
+    font-weight: 300;
+  }
+
+  .header-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+
+  .live-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #00ff88;
+    box-shadow: 0 0 8px rgba(0,255,136,0.6);
+    animation: livePulse 2s ease-in-out infinite;
+  }
+
+  .live-dot.waiting { background: #fbbf24; box-shadow: 0 0 8px rgba(251,191,36,0.6); }
+  .live-dot.complete { background: #00ff88; animation: none; }
+
+  @keyframes livePulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  /* Stats Row */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: rgba(17,24,39,0.8);
+    border: 1px solid rgba(30,41,59,0.8);
+    border-radius: 12px;
+    padding: 16px 20px;
+    backdrop-filter: blur(10px);
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  .stat-card:hover {
+    border-color: rgba(0,212,255,0.3);
+    box-shadow: 0 0 20px rgba(0,212,255,0.05);
+  }
+
+  .stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #475569;
+    margin-bottom: 6px;
+  }
+
+  .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: #00d4ff;
+    line-height: 1;
+  }
+
+  .stat-value.green { color: #00ff88; }
+  .stat-value.amber { color: #fbbf24; }
+  .stat-value.purple { color: #a855f7; }
+
+  .stat-sub {
+    font-size: 10px;
+    color: #374151;
+    margin-top: 4px;
+  }
+
+  /* Overall progress bar */
+  .overall-progress {
+    background: rgba(17,24,39,0.8);
+    border: 1px solid rgba(30,41,59,0.8);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    backdrop-filter: blur(10px);
+  }
+
+  .overall-progress .label-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    font-size: 11px;
+    color: #64748b;
+  }
+
+  .overall-bar {
+    height: 28px;
+    background: #0f172a;
+    border-radius: 14px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.4);
+  }
+
+  .overall-fill {
+    height: 100%;
+    border-radius: 14px;
+    background: linear-gradient(90deg, #00d4ff, #a855f7, #00ff88);
+    background-size: 200% 100%;
+    animation: gradientShift 3s ease infinite;
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+  }
+
+  .overall-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0; bottom: 0; left: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%);
+    animation: shimmer 2s infinite;
+  }
+
+  @keyframes gradientShift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  .overall-text {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+    letter-spacing: 0.5px;
+  }
+
+  /* Workers Grid */
+  .section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #475569;
+    margin-bottom: 12px;
+    padding-left: 4px;
+  }
+
+  .workers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+
+  .worker-card {
+    background: rgba(17,24,39,0.8);
+    border: 1px solid rgba(30,41,59,0.8);
+    border-radius: 10px;
+    padding: 14px;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s;
+  }
+
+  .worker-card.active {
+    border-color: rgba(0,212,255,0.2);
+  }
+
+  .worker-card.done {
+    border-color: rgba(0,255,136,0.3);
+    box-shadow: 0 0 15px rgba(0,255,136,0.05);
+  }
+
+  .worker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .worker-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .worker-status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #374151;
+  }
+
+  .worker-status-dot.rendering { background: #00d4ff; box-shadow: 0 0 6px rgba(0,212,255,0.5); }
+  .worker-status-dot.fast-forward { background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,0.5); }
+  .worker-status-dot.done { background: #00ff88; box-shadow: 0 0 6px rgba(0,255,136,0.5); }
+
+  .worker-fps {
+    font-size: 11px;
+    color: #00ff88;
+    font-weight: 600;
+  }
+
+  .worker-bar {
+    height: 6px;
+    background: #0f172a;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+
+  .worker-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #00d4ff, #a855f7);
+    transition: width 0.5s ease;
+  }
+
+  .worker-fill.done {
+    background: linear-gradient(90deg, #00ff88, #10b981);
+  }
+
+  .worker-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #374151;
+  }
+
+  /* FPS Chart */
+  .chart-container {
+    background: rgba(17,24,39,0.8);
+    border: 1px solid rgba(30,41,59,0.8);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+    backdrop-filter: blur(10px);
+  }
+
+  .chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .chart-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #475569;
+  }
+
+  .chart-legend {
+    display: flex;
+    gap: 16px;
+    font-size: 10px;
+    color: #475569;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .legend-dot {
+    width: 8px;
+    height: 3px;
+    border-radius: 2px;
+  }
+
+  canvas#fps-chart { width: 100%; height: 180px; }
+
+  /* Pipeline Phase Strip */
+  .phase-strip {
+    background: rgba(17,24,39,0.9);
+    border: 1px solid rgba(30,41,59,0.8);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    backdrop-filter: blur(10px);
+  }
+
+  .phase-header {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #475569;
+    margin-bottom: 12px;
+  }
+
+  .phase-steps {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+
+  .phase-step {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+  }
+
+  .phase-dot {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #0f172a;
+    border: 2px solid #1e293b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #374151;
+    transition: all 0.5s;
+    z-index: 1;
+  }
+
+  .phase-dot.active {
+    border-color: #00d4ff;
+    color: #00d4ff;
+    box-shadow: 0 0 12px rgba(0,212,255,0.4);
+    animation: phasePulse 2s ease-in-out infinite;
+  }
+
+  .phase-dot.done {
+    background: #00ff88;
+    border-color: #00ff88;
+    color: #05060f;
+    box-shadow: 0 0 8px rgba(0,255,136,0.3);
+    animation: none;
+  }
+
+  @keyframes phasePulse {
+    0%, 100% { box-shadow: 0 0 12px rgba(0,212,255,0.4); }
+    50% { box-shadow: 0 0 20px rgba(0,212,255,0.6); }
+  }
+
+  .phase-label {
+    font-size: 9px;
+    color: #374151;
+    text-align: center;
+    transition: color 0.5s;
+  }
+
+  .phase-label.active { color: #00d4ff; }
+  .phase-label.done { color: #00ff88; }
+
+  .phase-connector {
+    position: absolute;
+    top: 12px;
+    left: calc(50% + 14px);
+    width: calc(100% - 28px);
+    height: 2px;
+    background: #1e293b;
+    z-index: 0;
+  }
+
+  .phase-connector.done { background: #00ff88; }
+
+  .phase-detail {
+    font-size: 12px;
+    color: #94a3b8;
+    padding: 8px 0 0;
+    border-top: 1px solid rgba(30,41,59,0.5);
+    min-height: 20px;
+  }
+
+  .phase-detail .arrow { color: #00d4ff; margin-right: 6px; }
+
+  /* Footer */
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    font-size: 10px;
+    color: #1e293b;
+    border-top: 1px solid rgba(30,41,59,0.4);
+  }
+
+  .footer a { color: #475569; text-decoration: none; }
+  .footer a:hover { color: #00d4ff; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">
+      <div class="logo-icon">ff</div>
+      <div>
+        <h1>ffmpeg-render-pro</h1>
+        <div class="subtitle" id="subtitle">Initializing...</div>
+      </div>
+    </div>
+    <div class="header-status">
+      <div class="live-dot waiting" id="live-dot"></div>
+      <span id="status-text">Waiting for render...</span>
+    </div>
+  </div>
+
+  <!-- Stats Row -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Progress</div>
+      <div class="stat-value" id="overall-pct">0%</div>
+      <div class="stat-sub" id="frames-sub">0 / 0 frames</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total FPS</div>
+      <div class="stat-value green" id="total-fps">0</div>
+      <div class="stat-sub" id="fps-sub">combined across workers</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Elapsed</div>
+      <div class="stat-value amber" id="elapsed">0:00</div>
+      <div class="stat-sub" id="elapsed-sub">&nbsp;</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">ETA</div>
+      <div class="stat-value purple" id="eta">--</div>
+      <div class="stat-sub" id="eta-sub">&nbsp;</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Workers</div>
+      <div class="stat-value" id="worker-count">--</div>
+      <div class="stat-sub" id="worker-sub">&nbsp;</div>
+    </div>
+  </div>
+
+  <!-- Overall Progress Bar -->
+  <div class="overall-progress">
+    <div class="label-row">
+      <span>Overall Render Progress</span>
+      <span id="overall-detail">0%</span>
+    </div>
+    <div class="overall-bar">
+      <div class="overall-fill" id="overall-fill" style="width: 0%"></div>
+      <div class="overall-text" id="overall-bar-text">Waiting...</div>
+    </div>
+  </div>
+
+  <!-- Workers -->
+  <div class="section-title">Worker Threads</div>
+  <div class="workers-grid" id="workers-grid"></div>
+
+  <!-- FPS Chart -->
+  <div class="chart-container">
+    <div class="chart-header">
+      <div class="chart-title">Performance Over Time</div>
+      <div class="chart-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#00d4ff"></div> FPS</div>
+        <div class="legend-item"><div class="legend-dot" style="background:rgba(168,85,247,0.5)"></div> Avg</div>
+      </div>
+    </div>
+    <canvas id="fps-chart"></canvas>
+  </div>
+
+  <!-- Pipeline Phase -->
+  <div class="phase-strip">
+    <div class="phase-header">Pipeline Step</div>
+    <div class="phase-steps" id="phase-steps">
+      <div class="phase-step" data-phase="initializing">
+        <div class="phase-dot active" id="dot-initializing">1</div>
+        <div class="phase-label active" id="lbl-initializing">Init</div>
+        <div class="phase-connector" id="conn-initializing"></div>
+      </div>
+      <div class="phase-step" data-phase="spawning">
+        <div class="phase-dot" id="dot-spawning">2</div>
+        <div class="phase-label" id="lbl-spawning">Spawn</div>
+        <div class="phase-connector" id="conn-spawning"></div>
+      </div>
+      <div class="phase-step" data-phase="fast-forward">
+        <div class="phase-dot" id="dot-fast-forward">3</div>
+        <div class="phase-label" id="lbl-fast-forward">Fast-Fwd</div>
+        <div class="phase-connector" id="conn-fast-forward"></div>
+      </div>
+      <div class="phase-step" data-phase="rendering">
+        <div class="phase-dot" id="dot-rendering">4</div>
+        <div class="phase-label" id="lbl-rendering">Render</div>
+        <div class="phase-connector" id="conn-rendering"></div>
+      </div>
+      <div class="phase-step" data-phase="concatenating">
+        <div class="phase-dot" id="dot-concatenating">5</div>
+        <div class="phase-label" id="lbl-concatenating">Concat</div>
+        <div class="phase-connector" id="conn-concatenating"></div>
+      </div>
+      <div class="phase-step" data-phase="complete">
+        <div class="phase-dot" id="dot-complete">6</div>
+        <div class="phase-label" id="lbl-complete">Done</div>
+      </div>
+    </div>
+    <div class="phase-detail" id="phase-detail">&#9654; Starting up...</div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span>ffmpeg-render-pro &mdash; Parallel Rendering Toolkit</span>
+    <a href="https://github.com/beeswaxpat/ffmpeg-render-pro" target="_blank">github.com/beeswaxpat/ffmpeg-render-pro</a>
+  </div>
+
+</div>
+
+<script>
+// --- Dynamic config from global.json ---
+let NUM_WORKERS = 0;
+let TOTAL_FRAMES = 0;
+const POLL_INTERVAL = 1500;
+const fpsHistory = [];
+const MAX_HISTORY = 200;
+let renderStartTime = Date.now();
+let initialized = false;
+let renderComplete = false;
+let finalElapsed = 0;
+let pollIntervalId = null;
+let currentPhase = 'initializing';
+const PHASE_ORDER = ['initializing', 'spawning', 'fast-forward', 'rendering', 'concatenating', 'complete'];
+
+function updatePhaseStrip(phase, detail) {
+  if (!phase || phase === currentPhase && !detail) return;
+  currentPhase = phase;
+  const activeIdx = PHASE_ORDER.indexOf(phase);
+
+  for (let i = 0; i < PHASE_ORDER.length; i++) {
+    const p = PHASE_ORDER[i];
+    const dot = document.getElementById('dot-' + p);
+    const lbl = document.getElementById('lbl-' + p);
+    const conn = document.getElementById('conn-' + p);
+    if (!dot) continue;
+
+    dot.className = 'phase-dot';
+    lbl.className = 'phase-label';
+
+    if (i < activeIdx) {
+      dot.className = 'phase-dot done';
+      lbl.className = 'phase-label done';
+      if (conn) conn.className = 'phase-connector done';
+    } else if (i === activeIdx) {
+      dot.className = 'phase-dot active';
+      lbl.className = 'phase-label active';
+      if (conn) conn.className = 'phase-connector';
+    } else {
+      if (conn) conn.className = 'phase-connector';
+    }
+  }
+
+  if (detail) {
+    document.getElementById('phase-detail').textContent = '\u25B6 ' + detail;
+  }
+}
+
+// Build worker cards dynamically
+function initWorkerCards(count) {
+  const grid = document.getElementById('workers-grid');
+  grid.innerHTML = '';
+  for (let i = 0; i < count; i++) {
+    grid.innerHTML += `
+      <div class="worker-card" id="worker-${i}">
+        <div class="worker-header">
+          <div class="worker-name">
+            <div class="worker-status-dot" id="w${i}-dot"></div>
+            Worker ${i}
+          </div>
+          <div class="worker-fps" id="w${i}-fps">-- fps</div>
+        </div>
+        <div class="worker-bar">
+          <div class="worker-fill" id="w${i}-fill" style="width:0%"></div>
+        </div>
+        <div class="worker-meta">
+          <span id="w${i}-pct">0%</span>
+          <span id="w${i}-eta">Waiting...</span>
+        </div>
+      </div>
+    `;
+  }
+}
+
+// FPS Chart with glow + average line
+const chartCanvas = document.getElementById('fps-chart');
+const chartCtx = chartCanvas.getContext('2d');
+
+function drawChart() {
+  const w = chartCanvas.width = chartCanvas.offsetWidth * (window.devicePixelRatio || 1);
+  const h = chartCanvas.height = chartCanvas.offsetHeight * (window.devicePixelRatio || 1);
+  chartCtx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+  const dw = chartCanvas.offsetWidth;
+  const dh = chartCanvas.offsetHeight;
+
+  chartCtx.clearRect(0, 0, dw, dh);
+  if (fpsHistory.length < 2) return;
+
+  const maxFps = Math.max(30, ...fpsHistory) * 1.15;
+  const stepX = dw / (MAX_HISTORY - 1);
+  const avgFps = fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length;
+
+  // Grid
+  chartCtx.strokeStyle = 'rgba(30,41,59,0.5)';
+  chartCtx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = dh - (i / 4) * dh;
+    chartCtx.beginPath();
+    chartCtx.moveTo(0, y);
+    chartCtx.lineTo(dw, y);
+    chartCtx.stroke();
+    chartCtx.fillStyle = '#1e293b';
+    chartCtx.font = '10px monospace';
+    chartCtx.fillText(Math.round(maxFps * i / 4), 4, y - 3);
+  }
+
+  // Average line
+  const avgY = dh - (avgFps / maxFps) * dh;
+  chartCtx.strokeStyle = 'rgba(168,85,247,0.4)';
+  chartCtx.lineWidth = 1;
+  chartCtx.setLineDash([4, 4]);
+  chartCtx.beginPath();
+  chartCtx.moveTo(0, avgY);
+  chartCtx.lineTo(dw, avgY);
+  chartCtx.stroke();
+  chartCtx.setLineDash([]);
+
+  // FPS line with glow
+  const startIdx = Math.max(0, fpsHistory.length - MAX_HISTORY);
+
+  // Glow layer
+  chartCtx.beginPath();
+  chartCtx.strokeStyle = 'rgba(0,212,255,0.3)';
+  chartCtx.lineWidth = 6;
+  chartCtx.lineJoin = 'round';
+  for (let i = startIdx; i < fpsHistory.length; i++) {
+    const x = (i - startIdx) * stepX;
+    const y = dh - (fpsHistory[i] / maxFps) * dh;
+    if (i === startIdx) chartCtx.moveTo(x, y);
+    else chartCtx.lineTo(x, y);
+  }
+  chartCtx.stroke();
+
+  // Main line
+  chartCtx.beginPath();
+  chartCtx.strokeStyle = '#00d4ff';
+  chartCtx.lineWidth = 2;
+  for (let i = startIdx; i < fpsHistory.length; i++) {
+    const x = (i - startIdx) * stepX;
+    const y = dh - (fpsHistory[i] / maxFps) * dh;
+    if (i === startIdx) chartCtx.moveTo(x, y);
+    else chartCtx.lineTo(x, y);
+  }
+  chartCtx.stroke();
+
+  // Gradient fill under line
+  const lastX = (fpsHistory.length - 1 - startIdx) * stepX;
+  chartCtx.lineTo(lastX, dh);
+  chartCtx.lineTo(0, dh);
+  chartCtx.closePath();
+  const grad = chartCtx.createLinearGradient(0, 0, 0, dh);
+  grad.addColorStop(0, 'rgba(0,212,255,0.12)');
+  grad.addColorStop(1, 'rgba(0,212,255,0.01)');
+  chartCtx.fillStyle = grad;
+  chartCtx.fill();
+}
+
+// Poll loop
+async function poll() {
+  try {
+    const globalResp = await fetch('global.json?t=' + Date.now());
+    if (globalResp.ok) {
+      const global = await globalResp.json();
+      if (global.startTime) renderStartTime = global.startTime;
+      if (global.totalFrames) TOTAL_FRAMES = global.totalFrames;
+      if (global.numWorkers && global.numWorkers !== NUM_WORKERS) {
+        NUM_WORKERS = global.numWorkers;
+        initWorkerCards(NUM_WORKERS);
+        document.getElementById('worker-count').textContent = NUM_WORKERS;
+      }
+      const res = global.resolution || '?';
+      const title = global.title || 'ffmpeg-render-pro';
+      document.getElementById('subtitle').textContent =
+        `${title} | ${res} | ${TOTAL_FRAMES.toLocaleString()} frames | ${NUM_WORKERS} workers`;
+      document.title = `${title} — ffmpeg-render-pro`;
+
+      if (global.phase) updatePhaseStrip(global.phase, global.phaseDetail);
+
+      if (!initialized && NUM_WORKERS > 0) {
+        initialized = true;
+        document.getElementById('live-dot').classList.remove('waiting');
+      }
+    }
+  } catch(e) {}
+
+  if (NUM_WORKERS === 0) return;
+
+  let totalFramesDone = 0;
+  let totalFps = 0;
+  let allDone = true;
+  let maxEta = 0;
+  let activeWorkers = 0;
+
+  for (let i = 0; i < NUM_WORKERS; i++) {
+    try {
+      const resp = await fetch(`worker-${i}.json?t=` + Date.now());
+      if (!resp.ok) continue;
+      const d = await resp.json();
+
+      const pct = d.pct || 0;
+      const fps = d.fps || 0;
+      const eta = d.eta || 0;
+      const done = d.done || false;
+      const frames = d.framesRendered || 0;
+      const status = d.status || 'waiting';
+
+      totalFramesDone += frames;
+      totalFps += fps;
+      if (eta > maxEta) maxEta = eta;
+      if (!done) allDone = false;
+      if (status === 'rendering') activeWorkers++;
+
+      const card = document.getElementById(`worker-${i}`);
+      const dot = document.getElementById(`w${i}-dot`);
+      const fill = document.getElementById(`w${i}-fill`);
+      const fpsEl = document.getElementById(`w${i}-fps`);
+      const pctEl = document.getElementById(`w${i}-pct`);
+      const etaEl = document.getElementById(`w${i}-eta`);
+
+      if (!card) continue;
+
+      card.className = 'worker-card' + (done ? ' done' : fps > 0 ? ' active' : '');
+      dot.className = 'worker-status-dot ' + (done ? 'done' : status === 'fast-forward' ? 'fast-forward' : fps > 0 ? 'rendering' : '');
+      fill.style.width = pct + '%';
+      if (done) fill.classList.add('done');
+      fpsEl.textContent = done ? 'DONE' : fps.toFixed(1) + ' fps';
+      pctEl.textContent = done ? '100%' : Math.round(pct) + '%';
+      etaEl.textContent = done ? 'Complete' : status === 'fast-forward' ? 'Fast-forwarding...' : eta > 0 ? 'ETA ' + formatEta(eta) : 'Waiting...';
+    } catch(e) {}
+  }
+
+  // Update globals — freeze elapsed when render is done
+  const elapsed = renderComplete ? finalElapsed : (Date.now() - renderStartTime) / 1000;
+  const overallPct = TOTAL_FRAMES > 0 ? (totalFramesDone / TOTAL_FRAMES * 100) : 0;
+
+  document.getElementById('overall-pct').textContent = Math.round(overallPct) + '%';
+  document.getElementById('frames-sub').textContent = totalFramesDone.toLocaleString() + ' / ' + TOTAL_FRAMES.toLocaleString() + ' frames';
+  document.getElementById('total-fps').textContent = totalFps.toFixed(1);
+  document.getElementById('fps-sub').textContent = activeWorkers + ' active worker' + (activeWorkers !== 1 ? 's' : '');
+  document.getElementById('elapsed').textContent = formatTime(elapsed);
+  document.getElementById('eta').textContent = formatEta(maxEta);
+  document.getElementById('overall-fill').style.width = overallPct + '%';
+  document.getElementById('overall-detail').textContent = overallPct.toFixed(1) + '%';
+  document.getElementById('overall-bar-text').textContent =
+    overallPct < 1 ? 'Starting...' : Math.round(overallPct) + '% \u2014 ' + totalFps.toFixed(1) + ' fps';
+  document.getElementById('worker-sub').textContent = activeWorkers + ' active';
+
+  if (totalFps > 0) {
+    document.getElementById('status-text').textContent = 'Rendering...';
+    document.getElementById('live-dot').classList.remove('waiting');
+  }
+
+  if (allDone && totalFramesDone >= TOTAL_FRAMES && TOTAL_FRAMES > 0 && !renderComplete) {
+    renderComplete = true;
+    finalElapsed = elapsed; // Freeze the elapsed time
+    document.getElementById('status-text').textContent = 'RENDER COMPLETE';
+    document.getElementById('elapsed').textContent = formatTime(finalElapsed);
+    document.getElementById('elapsed-sub').textContent = 'final';
+    const dot = document.getElementById('live-dot');
+    dot.classList.add('complete');
+    dot.classList.remove('waiting');
+    document.getElementById('overall-bar-text').textContent = 'COMPLETE \u2014 ' + formatTime(finalElapsed);
+    document.getElementById('eta').textContent = 'Done';
+    document.getElementById('eta-sub').textContent = formatTime(finalElapsed) + ' total';
+    document.getElementById('total-fps').textContent = (totalFramesDone / finalElapsed).toFixed(1);
+    document.getElementById('fps-sub').textContent = 'average';
+    // Stop polling — render is done, no more updates needed
+    if (pollIntervalId) clearInterval(pollIntervalId);
+  }
+
+  fpsHistory.push(totalFps);
+  if (fpsHistory.length > MAX_HISTORY * 2) fpsHistory.splice(0, fpsHistory.length - MAX_HISTORY);
+  drawChart();
+}
+
+function formatTime(s) {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+  return m + ':' + String(sec).padStart(2, '0');
+}
+
+function formatEta(s) {
+  if (!s || s <= 0) return '--';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return h + 'h ' + m + 'm';
+  if (m > 0) return m + 'm ' + Math.floor(s % 60) + 's';
+  return Math.floor(s) + 's';
+}
+
+pollIntervalId = setInterval(poll, POLL_INTERVAL);
+poll();
+</script>
+</body>
+</html>

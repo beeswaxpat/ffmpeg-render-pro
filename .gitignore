@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+
+# Render outputs
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.webm
+*.mp3
+*.wav
+*.aac
+
+# Temp files from parallel rendering
+.parallel-temp/
+
+# Dashboard progress files (generated at runtime)
+preview/
+
+# GPU detection cache
+.ffmpeg-render-pro/
+
+# Checkpoints (generated, can be large)
+.checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment / secrets (should never exist here, but just in case)
+.env
+.env.*
+*.key
+*.pem
+*.secret
+credentials.*

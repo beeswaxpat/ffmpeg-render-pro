@@ -1,0 +1,34 @@
+{
+  "name": "ffmpeg-render-pro",
+  "version": "1.0.0",
+  "description": "Parallel video rendering with live dashboard, GPU auto-detection, and stream-copy concat. The most powerful free ffmpeg rendering toolkit.",
+  "main": "src/index.js",
+  "bin": {
+    "ffmpeg-render-pro": "bin/ffmpeg-render-pro.js"
+  },
+  "scripts": {
+    "test": "node test/run.js",
+    "detect-gpu": "node bin/ffmpeg-render-pro.js detect-gpu"
+  },
+  "keywords": [
+    "ffmpeg",
+    "video",
+    "render",
+    "parallel",
+    "gpu",
+    "nvenc",
+    "dashboard",
+    "encoding",
+    "mcp",
+    "claude"
+  ],
+  "author": "Beeswax Pat",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beeswaxpat/ffmpeg-render-pro"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
