@@ -1,14 +1,22 @@
 {
   "name": "ffmpeg-render-pro",
   "version": "1.0.0",
-  "description": "Parallel video rendering with live dashboard, GPU auto-detection, and stream-copy concat. The most powerful free ffmpeg rendering toolkit.",
+  "description": "Parallel video rendering with live dashboard, GPU auto-detection, checkpoint system, and stream-copy concat. The most powerful free ffmpeg rendering toolkit.",
   "main": "src/index.js",
   "bin": {
     "ffmpeg-render-pro": "bin/ffmpeg-render-pro.js"
   },
+  "files": [
+    "src/",
+    "bin/",
+    "examples/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "test": "node test/run.js",
-    "detect-gpu": "node bin/ffmpeg-render-pro.js detect-gpu"
+    "benchmark": "node examples/render-test.js",
+    "detect-gpu": "node bin/ffmpeg-render-pro.js detect-gpu",
+    "info": "node bin/ffmpeg-render-pro.js info"
   },
   "keywords": [
     "ffmpeg",
@@ -17,17 +25,26 @@
     "parallel",
     "gpu",
     "nvenc",
+    "videotoolbox",
     "dashboard",
     "encoding",
-    "mcp",
-    "claude"
+    "youtube",
+    "shorts",
+    "color-grading",
+    "checkpoint",
+    "audio",
+    "concat"
   ],
-  "author": "Beeswax Pat",
+  "author": "Beeswax Pat (https://github.com/beeswaxpat)",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/beeswaxpat/ffmpeg-render-pro"
+    "url": "git+https://github.com/beeswaxpat/ffmpeg-render-pro.git"
   },
+  "bugs": {
+    "url": "https://github.com/beeswaxpat/ffmpeg-render-pro/issues"
+  },
+  "homepage": "https://github.com/beeswaxpat/ffmpeg-render-pro#readme",
   "engines": {
     "node": ">=18.0.0"
   }
