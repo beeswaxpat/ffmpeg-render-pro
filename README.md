@@ -29,7 +29,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Cross-platform](https://img.shields.io/badge/Platform-Win%20%7C%20Mac%20%7C%20Linux-brightgreen)]()
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?logo=node.js&logoColor=white)]()
-[![Zero npm Dependencies](https://img.shields.io/badge/npm_Dependencies-Zero-orange)]()
+[![MCP Server](https://img.shields.io/badge/MCP-Server-purple)]()
 
 Parallel video rendering with live dashboard, GPU auto-detection, checkpoint system, and stream-copy concat. The most powerful free ffmpeg rendering toolkit.
 
@@ -44,7 +44,8 @@ Built by [Beeswax Pat](https://github.com/beeswaxpat) with [Claude Code](https:/
 - **Color grading** — 5 built-in presets (noir, warm, cool, cinematic, vintage) + custom filters
 - **Audio merge** — Combine video + audio with loudness normalization, no video re-encode
 - **Deterministic output** — Seeded RNG ensures parallel workers produce identical results to sequential
-- **Cross-platform** — Windows, macOS, Linux. Any GPU or CPU-only. Zero npm dependencies (requires Node.js >= 18 + ffmpeg).
+- **MCP server** — Model Context Protocol server with 6 tools, works with Claude Code, Claude Desktop, and any MCP client
+- **Cross-platform** — Windows, macOS, Linux. Any GPU or CPU-only. Requires Node.js >= 18 + ffmpeg.
 
 ## Requirements
 
@@ -181,6 +182,44 @@ node examples/render-test.js --duration=5
 node examples/render-test.js --duration=30
 node examples/render-test.js --duration=60 --width=1080 --height=1920
 ```
+
+## MCP Server
+
+ffmpeg-render-pro includes a Model Context Protocol (MCP) server with 6 tools. Works with Claude Code, Claude Desktop, and any MCP client.
+
+### Add to Claude Code
+
+```bash
+claude mcp add --transport stdio ffmpeg-render-pro -- npx -y ffmpeg-render-pro-mcp
+# Or if installed locally:
+claude mcp add --transport stdio ffmpeg-render-pro -- node /path/to/src/mcp-server.mjs
+```
+
+### Add to Claude Desktop
+
+Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "ffmpeg-render-pro": {
+      "command": "node",
+      "args": ["/path/to/ffmpeg-render-pro/src/mcp-server.mjs"]
+    }
+  }
+}
+```
+
+### MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `detect_gpu` | Probe hardware encoders (NVENC, VideoToolbox, AMF, VA-API, QSV) |
+| `system_info` | Show CPU cores, RAM, recommended workers, ffmpeg version |
+| `render_video` | Parallel render with live dashboard |
+| `color_grade` | Apply presets (noir, warm, cool, cinematic, vintage) or custom filters |
+| `merge_audio` | Combine video + audio with loudness normalization |
+| `concat_videos` | Stream-copy join multiple videos (instant, no re-encode) |
 
 ## Claude Code Skill
 

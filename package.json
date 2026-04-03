@@ -1,10 +1,11 @@
 {
   "name": "ffmpeg-render-pro",
-  "version": "1.0.0",
-  "description": "Parallel video rendering with live dashboard, GPU auto-detection, checkpoint system, and stream-copy concat. The most powerful free ffmpeg rendering toolkit.",
+  "version": "1.1.0",
+  "description": "Parallel video rendering with live dashboard, GPU auto-detection, checkpoint system, and stream-copy concat. MCP server + Claude Code skill + CLI. The most powerful free ffmpeg rendering toolkit.",
   "main": "src/index.js",
   "bin": {
-    "ffmpeg-render-pro": "bin/ffmpeg-render-pro.js"
+    "ffmpeg-render-pro": "bin/ffmpeg-render-pro.js",
+    "ffmpeg-render-mcp": "src/mcp-server.mjs"
   },
   "files": [
     "src/",
@@ -16,7 +17,8 @@
   "scripts": {
     "benchmark": "node examples/render-test.js",
     "detect-gpu": "node bin/ffmpeg-render-pro.js detect-gpu",
-    "info": "node bin/ffmpeg-render-pro.js info"
+    "info": "node bin/ffmpeg-render-pro.js info",
+    "mcp": "node src/mcp-server.mjs"
   },
   "keywords": [
     "ffmpeg",
@@ -33,7 +35,11 @@
     "color-grading",
     "checkpoint",
     "audio",
-    "concat"
+    "concat",
+    "mcp",
+    "model-context-protocol",
+    "claude",
+    "claude-code"
   ],
   "author": "Beeswax Pat (https://github.com/beeswaxpat)",
   "license": "MIT",
@@ -47,5 +53,9 @@
   "homepage": "https://github.com/beeswaxpat/ffmpeg-render-pro#readme",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "3.24.4"
   }
 }
