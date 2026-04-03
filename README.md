@@ -29,7 +29,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Cross-platform](https://img.shields.io/badge/Platform-Win%20%7C%20Mac%20%7C%20Linux-brightgreen)]()
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?logo=node.js&logoColor=white)]()
-[![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-orange)]()
+[![Zero npm Dependencies](https://img.shields.io/badge/npm_Dependencies-Zero-orange)]()
 
 Parallel video rendering with live dashboard, GPU auto-detection, checkpoint system, and stream-copy concat. The most powerful free ffmpeg rendering toolkit.
 
@@ -44,7 +44,7 @@ Built by [Beeswax Pat](https://github.com/beeswaxpat) with [Claude Code](https:/
 - **Color grading** — 5 built-in presets (noir, warm, cool, cinematic, vintage) + custom filters
 - **Audio merge** — Combine video + audio with loudness normalization, no video re-encode
 - **Deterministic output** — Seeded RNG ensures parallel workers produce identical results to sequential
-- **Cross-platform** — Windows, macOS, Linux. Any GPU or CPU-only.
+- **Cross-platform** — Windows, macOS, Linux. Any GPU or CPU-only. Zero npm dependencies (requires Node.js >= 18 + ffmpeg).
 
 ## Requirements
 
