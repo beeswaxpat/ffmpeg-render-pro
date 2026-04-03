@@ -797,11 +797,12 @@ async function poll() {
 
   if (NUM_WORKERS === 0) return;
 
-  let totalFramesDone = 0;
+  let totalPctSum = 0;
   let totalFps = 0;
   let allDone = true;
   let maxEta = 0;
   let activeWorkers = 0;
+  const framesPerWorker = NUM_WORKERS > 0 ? Math.ceil(TOTAL_FRAMES / NUM_WORKERS) : 0;
 
   for (let i = 0; i < NUM_WORKERS; i++) {
     try {
@@ -813,10 +814,9 @@ async function poll() {
       const fps = d.fps || 0;
       const eta = d.eta || 0;
       const done = d.done || false;
-      const frames = d.framesRendered || 0;
       const status = d.status || 'waiting';
 
-      totalFramesDone += frames;
+      totalPctSum += pct;
       totalFps += fps;
       if (eta > maxEta) maxEta = eta;
       if (!done) allDone = false;
@@ -843,7 +843,8 @@ async function poll() {
 
   // Update globals — freeze elapsed when render is done
   const elapsed = renderComplete ? finalElapsed : (Date.now() - renderStartTime) / 1000;
-  const overallPct = TOTAL_FRAMES > 0 ? (totalFramesDone / TOTAL_FRAMES * 100) : 0;
+  const overallPct = NUM_WORKERS > 0 ? (totalPctSum / NUM_WORKERS) : 0;
+  const totalFramesDone = Math.round(overallPct / 100 * TOTAL_FRAMES);
 
   document.getElementById('overall-pct').textContent = Math.round(overallPct) + '%';
   document.getElementById('frames-sub').textContent = totalFramesDone.toLocaleString() + ' / ' + TOTAL_FRAMES.toLocaleString() + ' frames';
@@ -862,9 +863,26 @@ async function poll() {
     document.getElementById('live-dot').classList.remove('waiting');
   }
 
-  if (allDone && totalFramesDone >= TOTAL_FRAMES && TOTAL_FRAMES > 0 && !renderComplete) {
+  // Detect completion via:
+  // 1. All workers report done, OR
+  // 2. Phase is 'complete' (set by the renderer before it exits), OR
+  // 3. Most workers done + no FPS activity (renderer exited mid-update)
+  const doneWorkers = Array.from({ length: NUM_WORKERS }, (_, i) => {
+    const el = document.getElementById(`w${i}-fill`);
+    return el && el.classList.contains('done');
+  }).filter(Boolean).length;
+  const renderFinished = (allDone && TOTAL_FRAMES > 0) ||
+    currentPhase === 'complete' ||
+    (doneWorkers >= NUM_WORKERS - 1 && totalFps === 0 && elapsed > 10);
+
+  if (renderFinished && !renderComplete) {
     renderComplete = true;
-    finalElapsed = elapsed; // Freeze the elapsed time
+    finalElapsed = elapsed;
+    overallPct = 100;
+    document.getElementById('overall-pct').textContent = '100%';
+    document.getElementById('overall-fill').style.width = '100%';
+    document.getElementById('overall-detail').textContent = '100.0%';
+    document.getElementById('frames-sub').textContent = TOTAL_FRAMES.toLocaleString() + ' / ' + TOTAL_FRAMES.toLocaleString() + ' frames';
     document.getElementById('status-text').textContent = 'RENDER COMPLETE';
     document.getElementById('elapsed').textContent = formatTime(finalElapsed);
     document.getElementById('elapsed-sub').textContent = 'final';
@@ -874,9 +892,24 @@ async function poll() {
     document.getElementById('overall-bar-text').textContent = 'COMPLETE \u2014 ' + formatTime(finalElapsed);
     document.getElementById('eta').textContent = 'Done';
     document.getElementById('eta-sub').textContent = formatTime(finalElapsed) + ' total';
-    document.getElementById('total-fps').textContent = (totalFramesDone / finalElapsed).toFixed(1);
+    document.getElementById('total-fps').textContent = (TOTAL_FRAMES / finalElapsed).toFixed(1);
     document.getElementById('fps-sub').textContent = 'average';
-    // Stop polling — render is done, no more updates needed
+    // Mark any remaining workers as done visually
+    for (let i = 0; i < NUM_WORKERS; i++) {
+      const fill = document.getElementById(`w${i}-fill`);
+      const fpsEl = document.getElementById(`w${i}-fps`);
+      const pctEl = document.getElementById(`w${i}-pct`);
+      const etaEl = document.getElementById(`w${i}-eta`);
+      const card = document.getElementById(`worker-${i}`);
+      const wdot = document.getElementById(`w${i}-dot`);
+      if (fill) { fill.style.width = '100%'; fill.classList.add('done'); }
+      if (fpsEl) fpsEl.textContent = 'DONE';
+      if (pctEl) pctEl.textContent = '100%';
+      if (etaEl) etaEl.textContent = 'Complete';
+      if (card) card.className = 'worker-card done';
+      if (wdot) wdot.className = 'worker-status-dot done';
+    }
+    updatePhaseStrip('complete', 'Done! ' + TOTAL_FRAMES.toLocaleString() + ' frames in ' + formatTime(finalElapsed));
     if (pollIntervalId) clearInterval(pollIntervalId);
   }
 
