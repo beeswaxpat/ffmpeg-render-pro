@@ -182,6 +182,20 @@ node examples/render-test.js --duration=30
 node examples/render-test.js --duration=60 --width=1080 --height=1920
 ```
 
+## Claude Code Skill
+
+This repo includes a ready-to-use [Claude Code](https://claude.ai/claude-code) skill. To install it, copy the skill folder into your Claude skills directory:
+
+```bash
+# macOS / Linux
+cp -r .claude/skills/ffmpeg-render-pipeline ~/.claude/skills/
+
+# Windows
+xcopy .claude\skills\ffmpeg-render-pipeline %USERPROFILE%\.claude\skills\ffmpeg-render-pipeline\ /E /I
+```
+
+Once installed, Claude Code will automatically use the skill when you ask it to render video or audio with ffmpeg.
+
 ## License
 
 MIT
