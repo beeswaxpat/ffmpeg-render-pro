@@ -6,6 +6,11 @@
  */
 const { spawn } = require('child_process');
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const crypto = require('crypto');
+
+const STDERR_CAP = 8192;
 
 /**
  * Concatenate multiple MP4 segments into one file.
@@ -17,12 +22,27 @@ const fs = require('fs');
  */
 function concatSegments(segmentPaths, outputPath) {
   return new Promise((resolve, reject) => {
-    // Escape single quotes in paths and normalize to forward slashes for ffmpeg
+    if (!Array.isArray(segmentPaths) || segmentPaths.length === 0) {
+      return reject(new Error('concatSegments: at least one segment is required'));
+    }
+
+    // Write the list file to os.tmpdir() with a random suffix. This avoids
+    // (a) collisions when multiple concats run concurrently with the same output
+    // (b) polluting the output directory with a stray .txt file.
+    const listPath = path.join(
+      os.tmpdir(),
+      `ffmpeg-render-pro-concat-${crypto.randomBytes(8).toString('hex')}.txt`,
+    );
+
     const listContent = segmentPaths
       .map(p => `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`)
       .join('\n');
-    const listPath = outputPath.replace(/\.mp4$/, '') + '-concat-list.txt';
-    fs.writeFileSync(listPath, listContent);
+
+    try {
+      fs.writeFileSync(listPath, listContent);
+    } catch (err) {
+      return reject(new Error(`Concat: failed to write list file: ${err.message}`));
+    }
 
     const args = [
       '-y',
@@ -41,6 +61,7 @@ function concatSegments(segmentPaths, outputPath) {
     let stderrData = '';
     ffmpeg.stderr.on('data', (chunk) => {
       stderrData += chunk.toString();
+      if (stderrData.length > STDERR_CAP) stderrData = stderrData.slice(-STDERR_CAP);
     });
 
     ffmpeg.on('close', (code) => {
@@ -53,6 +74,7 @@ function concatSegments(segmentPaths, outputPath) {
     });
 
     ffmpeg.on('error', (err) => {
+      try { fs.unlinkSync(listPath); } catch {}
       reject(new Error(`Concat error: ${err.message}`));
     });
   });

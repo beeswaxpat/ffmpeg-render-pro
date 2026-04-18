@@ -69,19 +69,28 @@ function getFFmpegVersion() {
   return check.version || 'unknown';
 }
 
-/**
- * Check if an encoder is listed in ffmpeg -encoders output.
- */
-function isEncoderListed(encoderName) {
+// Cache `ffmpeg -encoders` output for the lifetime of this process.
+// Avoids spawning ffmpeg once per candidate encoder.
+let _encodersListCache = null;
+function getEncodersList() {
+  if (_encodersListCache !== null) return _encodersListCache;
   try {
     const result = spawnSync('ffmpeg', ['-encoders'], {
       encoding: 'utf-8', timeout: 10000,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    return (result.stdout || '').includes(encoderName);
+    _encodersListCache = result.stdout || '';
   } catch {
-    return false;
+    _encodersListCache = '';
   }
+  return _encodersListCache;
+}
+
+/**
+ * Check if an encoder is listed in ffmpeg -encoders output.
+ */
+function isEncoderListed(encoderName) {
+  return getEncodersList().includes(encoderName);
 }
 
 /**
@@ -142,6 +151,9 @@ function saveCache(result) {
  */
 function detectGPU(options = {}) {
   const { force = false, verbose = false, forceEncoder } = options;
+
+  // Re-probing? Clear the encoders cache so we re-read ffmpeg -encoders.
+  if (force) _encodersListCache = null;
 
   // Force CPU mode — skip all probing
   if (forceEncoder === 'cpu') {

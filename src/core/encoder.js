@@ -7,6 +7,8 @@
 const { spawn } = require('child_process');
 const { getCodecArgs } = require('./gpu-detect');
 
+const STDERR_CAP = 8192;
+
 /**
  * Create an ffmpeg encoder that accepts raw BGRA frames via stdin pipe.
  *
@@ -54,24 +56,41 @@ function createEncoder(options) {
   let stderrData = '';
   ffmpeg.stderr.on('data', (chunk) => {
     stderrData += chunk.toString();
+    if (stderrData.length > STDERR_CAP) stderrData = stderrData.slice(-STDERR_CAP);
   });
 
+  // Capture stream-level errors so writeFrame can surface them.
+  let streamError = null;
+  const onStreamError = (err) => { streamError = err; };
+  ffmpeg.stdin.on('error', onStreamError);
+
   ffmpeg.on('error', (err) => {
-    console.error('ffmpeg encoder error:', err.message);
+    streamError = err;
+    if (process.env.FFMPEG_RENDER_PRO_DEBUG) {
+      console.error('ffmpeg encoder error:', err.message);
+    }
   });
 
   return {
     process: ffmpeg,
     stdin: ffmpeg.stdin,
 
+    // Returns undefined on a successful synchronous write (no backpressure),
+    // or a Promise that resolves on drain / rejects on stream error.
+    // `await` on undefined is a no-op, so callers can always `await` safely.
     writeFrame(buffer) {
+      if (streamError) return Promise.reject(streamError);
+      const ok = ffmpeg.stdin.write(buffer);
+      if (ok) return undefined;
       return new Promise((resolve, reject) => {
-        const ok = ffmpeg.stdin.write(buffer);
-        if (ok) {
-          resolve();
-        } else {
-          ffmpeg.stdin.once('drain', resolve);
-        }
+        const onDrain = () => { cleanup(); resolve(); };
+        const onError = (err) => { cleanup(); reject(err); };
+        const cleanup = () => {
+          ffmpeg.stdin.off('drain', onDrain);
+          ffmpeg.stdin.off('error', onError);
+        };
+        ffmpeg.stdin.once('drain', onDrain);
+        ffmpeg.stdin.once('error', onError);
       });
     },
 
@@ -84,7 +103,11 @@ function createEncoder(options) {
             reject(new Error(`ffmpeg exited with code ${code}\n${stderrData.slice(-500)}`));
           }
         });
-        ffmpeg.stdin.end();
+        try {
+          ffmpeg.stdin.end();
+        } catch (err) {
+          reject(err);
+        }
       });
     },
   };

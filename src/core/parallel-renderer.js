@@ -74,20 +74,22 @@ async function renderParallel(options) {
     throw new Error(`Worker script not found: ${workerScript}`);
   }
 
-  if (fps <= 0 || fps > 240) {
-    throw new Error(`Invalid fps: ${fps}. Must be between 1 and 240.`);
+  if (typeof fps !== 'number' || !Number.isFinite(fps) || fps < 1 || fps > 240) {
+    throw new Error(`Invalid fps: ${fps}. Must be a finite number between 1 and 240.`);
   }
 
-  if (duration <= 0) {
-    throw new Error(`Invalid duration: ${duration}. Must be a positive number.`);
+  if (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0) {
+    throw new Error(`Invalid duration: ${duration}. Must be a positive finite number.`);
   }
 
-  const totalFrames = fps * duration;
+  if (typeof dashboardPort !== 'number' || !Number.isInteger(dashboardPort) || dashboardPort < 1 || dashboardPort > 65535) {
+    throw new Error(`Invalid dashboardPort: ${dashboardPort}. Must be an integer in 1-65535.`);
+  }
+
+  const totalFrames = Math.max(1, Math.floor(fps * duration));
   const auto = getOptimalWorkers({ width, height });
-  const numWorkers = Math.min(
-    requestedWorkers || auto.workers,
-    totalFrames
-  );
+  const requestedN = Number.isInteger(requestedWorkers) && requestedWorkers > 0 ? requestedWorkers : auto.workers;
+  const numWorkers = Math.max(1, Math.min(requestedN, totalFrames));
   const framesPerWorker = Math.ceil(totalFrames / numWorkers);
 
   // Ensure output directory exists
@@ -145,8 +147,11 @@ async function renderParallel(options) {
   // Track worker states with Set to avoid race condition double-counting
   const renderingWorkers = new Set();
   const forwardingWorkers = new Set();
+  const doneWorkers = new Set();
 
   // --- Graceful shutdown on SIGINT/SIGTERM ---
+  // Install scoped handlers and remove them when renderParallel finishes.
+  // This prevents handler accumulation across repeated calls.
   let cleanedUp = false;
   function cleanup() {
     if (cleanedUp) return;
@@ -157,14 +162,18 @@ async function renderParallel(options) {
     for (const w of workers) {
       try { w.terminate(); } catch {}
     }
-    for (const seg of segmentPaths) {
-      try { fs.unlinkSync(seg); } catch {}
-    }
-    try { fs.rmdirSync(tempDir); } catch {}
+    // Use rmSync (recursive, force) — handles locked files gracefully on Windows.
+    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
   }
 
-  process.on('SIGINT', () => { cleanup(); process.exit(1); });
-  process.on('SIGTERM', () => { cleanup(); process.exit(1); });
+  const onSigint = () => { cleanup(); process.exit(130); };
+  const onSigterm = () => { cleanup(); process.exit(143); };
+  process.on('SIGINT', onSigint);
+  process.on('SIGTERM', onSigterm);
+  const removeSignalHandlers = () => {
+    process.removeListener('SIGINT', onSigint);
+    process.removeListener('SIGTERM', onSigterm);
+  };
 
   // Spawn workers
   progress.setPhase('spawning', `Launching ${numWorkers} worker threads...`);
@@ -204,13 +213,20 @@ async function renderParallel(options) {
             eta: parseFloat(msg.eta) || 0,
             status: 'rendering',
           });
+        } else if (msg.type === 'fast-forward-start') {
+          // Structured message from workers that are fast-forwarding state.
+          forwardingWorkers.add(msg.workerId);
+          progress.updateWorker(msg.workerId, { status: 'fast-forward' });
+          progress.setPhase('fast-forward', `Fast-forwarding worker state (${forwardingWorkers.size}/${numWorkers} workers) \u2014 this is the slow part...`);
         } else if (msg.type === 'log') {
+          // Backwards-compat: old workers used type:'log' with a 'Fast-forward' substring.
           if (msg.msg && msg.msg.includes('Fast-forward')) {
             forwardingWorkers.add(msg.workerId);
             progress.updateWorker(msg.workerId, { status: 'fast-forward' });
             progress.setPhase('fast-forward', `Fast-forwarding worker state (${forwardingWorkers.size}/${numWorkers} workers) \u2014 this is the slow part...`);
           }
         } else if (msg.type === 'done') {
+          doneWorkers.add(msg.workerId);
           progress.workerDone(msg.workerId);
           resolve(msg);
         } else if (msg.type === 'error') {
@@ -223,8 +239,15 @@ async function renderParallel(options) {
       });
 
       worker.on('exit', (code) => {
-        if (code !== 0 && code !== null) {
-          reject(new Error(`Worker ${i} exited with code ${code}`));
+        // If a worker exits without sending a `done` message, resolve anyway
+        // (the segment file will still be checked during concat). This prevents
+        // the Promise.all from hanging forever on silent exits.
+        if (!doneWorkers.has(i)) {
+          if (code === 0 || code === null) {
+            resolve({ type: 'done', workerId: i, implicit: true });
+          } else {
+            reject(new Error(`Worker ${i} exited with code ${code}`));
+          }
         }
       });
     });
@@ -243,11 +266,8 @@ async function renderParallel(options) {
     progress.setPhase('concatenating', `Joining ${numWorkers} segments with stream copy (instant, no re-encode)...`);
     await concatSegments(segmentPaths, outputPath);
 
-    // Cleanup
-    for (const seg of segmentPaths) {
-      try { fs.unlinkSync(seg); } catch {}
-    }
-    try { fs.rmdirSync(tempDir); } catch {}
+    // Cleanup temp dir (recursive, force — handles any stray files + Windows locks)
+    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
 
     const elapsed = (Date.now() - startTime) / 1000;
     const minutes = (elapsed / 60).toFixed(1);
@@ -262,10 +282,12 @@ async function renderParallel(options) {
       }, 30000);
     }
 
+    removeSignalHandlers();
     return { outputPath, elapsed, totalFrames };
 
   } catch (err) {
     cleanup();
+    removeSignalHandlers();
     throw err;
   }
 }

@@ -29,9 +29,16 @@ const { concatSegments } = require('./core/concat');
 const path = require('path');
 const fs = require('fs');
 
+// Keep the MCP server's advertised version in sync with package.json
+// so we don't ship stale version metadata to MCP clients.
+let pkgVersion = '0.0.0';
+try {
+  pkgVersion = require('../package.json').version || pkgVersion;
+} catch {}
+
 const server = new McpServer({
   name: 'ffmpeg-render-pro',
-  version: '1.1.0',
+  version: pkgVersion,
 });
 
 // ── Tool 1: detect_gpu ──────────────────────────────────────────────

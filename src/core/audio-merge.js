@@ -6,6 +6,8 @@
  */
 const { spawn } = require('child_process');
 
+const STDERR_CAP = 8192;
+
 /**
  * Merge video with audio file.
  *
@@ -55,6 +57,7 @@ function mergeAudio(options) {
     let stderrData = '';
     ffmpeg.stderr.on('data', (chunk) => {
       stderrData += chunk.toString();
+      if (stderrData.length > STDERR_CAP) stderrData = stderrData.slice(-STDERR_CAP);
     });
 
     ffmpeg.on('close', (code) => {

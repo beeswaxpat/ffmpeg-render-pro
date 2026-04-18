@@ -194,5 +194,10 @@ async function main() {
 
 main().catch(err => {
   console.error('\n  Error:', err.message);
+  if (!process.env.FFMPEG_RENDER_PRO_DEBUG) {
+    console.error('  (Set FFMPEG_RENDER_PRO_DEBUG=1 for a full stack trace.)\n');
+  } else {
+    console.error(err.stack || err);
+  }
   process.exit(1);
 });

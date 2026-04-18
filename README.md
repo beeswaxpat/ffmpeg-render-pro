@@ -26,10 +26,11 @@
 
 # ffmpeg-render-pro
 
+[![npm version](https://img.shields.io/npm/v/ffmpeg-render-pro.svg)](https://www.npmjs.com/package/ffmpeg-render-pro)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform: Cross-platform](https://img.shields.io/badge/Platform-Win%20%7C%20Mac%20%7C%20Linux-brightgreen)]()
-[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?logo=node.js&logoColor=white)]()
-[![MCP Server](https://img.shields.io/badge/MCP-Server-purple)]()
+[![Platform: Cross-platform](https://img.shields.io/badge/Platform-Win%20%7C%20Mac%20%7C%20Linux-brightgreen)](https://github.com/beeswaxpat/ffmpeg-render-pro)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![MCP Server](https://img.shields.io/badge/MCP-Server-purple)](https://modelcontextprotocol.io)
 
 Parallel video rendering with live dashboard, GPU auto-detection, checkpoint system, and stream-copy concat. The most powerful free ffmpeg rendering toolkit.
 
@@ -234,6 +235,17 @@ xcopy .claude\skills\ffmpeg-render-pipeline %USERPROFILE%\.claude\skills\ffmpeg-
 ```
 
 Once installed, Claude Code will automatically use the skill when you ask it to render video or audio with ffmpeg.
+
+## Security Notes
+
+- **Dashboard server binds to `127.0.0.1` only.** It is never reachable from other machines on your network.
+- **No telemetry, no phone-home, no CDN loads.** Dashboard runs entirely from local files using system fonts.
+- **MCP server is a local-filesystem tool.** When wired into an AI agent, it will render, read, and write files anywhere the current user has access. Treat it like any other filesystem-enabled tool: only run it with a trusted agent, and consider restricting the process's working directory if you use it with untrusted prompts.
+- **Stream-copy concat uses temp files under `os.tmpdir()`.** Output paths you pass are still written as-is — make sure your output path is where you want it.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes. Latest: **v1.2.0** — hardening pass (critical dashboard fix, path-traversal defense, performance improvements).
 
 ## License
 

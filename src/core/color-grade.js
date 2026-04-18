@@ -7,6 +7,8 @@
 const { spawn } = require('child_process');
 const { getCodecArgs } = require('./gpu-detect');
 
+const STDERR_CAP = 8192;
+
 const PRESETS = {
   'noir': [
     'eq=brightness=-0.015:contrast=1.07:saturation=0.92',
@@ -85,6 +87,7 @@ function colorGrade(options) {
     let stderrData = '';
     ffmpeg.stderr.on('data', (chunk) => {
       stderrData += chunk.toString();
+      if (stderrData.length > STDERR_CAP) stderrData = stderrData.slice(-STDERR_CAP);
     });
 
     ffmpeg.on('close', (code) => {

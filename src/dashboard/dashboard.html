@@ -804,46 +804,53 @@ async function poll() {
   let activeWorkers = 0;
   const framesPerWorker = NUM_WORKERS > 0 ? Math.ceil(TOTAL_FRAMES / NUM_WORKERS) : 0;
 
+  // Fetch all worker JSONs in parallel — was sequential (N × latency per tick).
+  const bust = Date.now();
+  const responses = await Promise.all(
+    Array.from({ length: NUM_WORKERS }, (_, i) =>
+      fetch(`worker-${i}.json?t=` + bust)
+        .then(r => r.ok ? r.json() : null)
+        .catch(() => null)
+    )
+  );
+
   for (let i = 0; i < NUM_WORKERS; i++) {
-    try {
-      const resp = await fetch(`worker-${i}.json?t=` + Date.now());
-      if (!resp.ok) continue;
-      const d = await resp.json();
+    const d = responses[i];
+    if (!d) continue;
 
-      const pct = d.pct || 0;
-      const fps = d.fps || 0;
-      const eta = d.eta || 0;
-      const done = d.done || false;
-      const status = d.status || 'waiting';
+    const pct = d.pct || 0;
+    const fps = d.fps || 0;
+    const eta = d.eta || 0;
+    const done = d.done || false;
+    const status = d.status || 'waiting';
 
-      totalPctSum += pct;
-      totalFps += fps;
-      if (eta > maxEta) maxEta = eta;
-      if (!done) allDone = false;
-      if (status === 'rendering') activeWorkers++;
+    totalPctSum += pct;
+    totalFps += fps;
+    if (eta > maxEta) maxEta = eta;
+    if (!done) allDone = false;
+    if (status === 'rendering') activeWorkers++;
 
-      const card = document.getElementById(`worker-${i}`);
-      const dot = document.getElementById(`w${i}-dot`);
-      const fill = document.getElementById(`w${i}-fill`);
-      const fpsEl = document.getElementById(`w${i}-fps`);
-      const pctEl = document.getElementById(`w${i}-pct`);
-      const etaEl = document.getElementById(`w${i}-eta`);
+    const card = document.getElementById(`worker-${i}`);
+    const dot = document.getElementById(`w${i}-dot`);
+    const fill = document.getElementById(`w${i}-fill`);
+    const fpsEl = document.getElementById(`w${i}-fps`);
+    const pctEl = document.getElementById(`w${i}-pct`);
+    const etaEl = document.getElementById(`w${i}-eta`);
 
-      if (!card) continue;
+    if (!card) continue;
 
-      card.className = 'worker-card' + (done ? ' done' : fps > 0 ? ' active' : '');
-      dot.className = 'worker-status-dot ' + (done ? 'done' : status === 'fast-forward' ? 'fast-forward' : fps > 0 ? 'rendering' : '');
-      fill.style.width = pct + '%';
-      if (done) fill.classList.add('done');
-      fpsEl.textContent = done ? 'DONE' : fps.toFixed(1) + ' fps';
-      pctEl.textContent = done ? '100%' : Math.round(pct) + '%';
-      etaEl.textContent = done ? 'Complete' : status === 'fast-forward' ? 'Fast-forwarding...' : eta > 0 ? 'ETA ' + formatEta(eta) : 'Waiting...';
-    } catch(e) {}
+    card.className = 'worker-card' + (done ? ' done' : fps > 0 ? ' active' : '');
+    dot.className = 'worker-status-dot ' + (done ? 'done' : status === 'fast-forward' ? 'fast-forward' : fps > 0 ? 'rendering' : '');
+    fill.style.width = pct + '%';
+    if (done) fill.classList.add('done');
+    fpsEl.textContent = done ? 'DONE' : fps.toFixed(1) + ' fps';
+    pctEl.textContent = done ? '100%' : Math.round(pct) + '%';
+    etaEl.textContent = done ? 'Complete' : status === 'fast-forward' ? 'Fast-forwarding...' : eta > 0 ? 'ETA ' + formatEta(eta) : 'Waiting...';
   }
 
   // Update globals — freeze elapsed when render is done
   const elapsed = renderComplete ? finalElapsed : (Date.now() - renderStartTime) / 1000;
-  const overallPct = NUM_WORKERS > 0 ? (totalPctSum / NUM_WORKERS) : 0;
+  let overallPct = NUM_WORKERS > 0 ? (totalPctSum / NUM_WORKERS) : 0;
   const totalFramesDone = Math.round(overallPct / 100 * TOTAL_FRAMES);
 
   document.getElementById('overall-pct').textContent = Math.round(overallPct) + '%';

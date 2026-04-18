@@ -42,9 +42,12 @@ class ProgressTracker extends EventEmitter {
     // Write global config for HTML dashboard
     this._writeGlobalJSON();
 
-    // Terminal dashboard
+    // Terminal dashboard — tick once/sec: terminal redraw + fresh global.json
     for (let i = 0; i < this.numWorkers + 1; i++) process.stdout.write('\n');
-    this._dashboardInterval = setInterval(() => this._drawTerminal(), 1000);
+    this._dashboardInterval = setInterval(() => {
+      this._drawTerminal();
+      this._writeGlobalJSON();
+    }, 1000);
   }
 
   /**
@@ -140,7 +143,8 @@ class ProgressTracker extends EventEmitter {
     const lines = [];
     lines.push(`\x1b[2K  [${elapsed}s elapsed]`);
 
-    this._writeGlobalJSON();
+    // Note: global.json is written by the caller (setPhase / interval tick),
+    // not here. Writing it in both places caused 2 disk writes per tick.
 
     for (let i = 0; i < this.numWorkers; i++) {
       const w = this.workers[i];
