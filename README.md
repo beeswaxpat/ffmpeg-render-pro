@@ -53,34 +53,42 @@ Built by [Beeswax Pat](https://github.com/beeswaxpat) with [Claude Code](https:/
 - **Node.js** >= 18
 - **ffmpeg** installed and on PATH
 
+## Install
+
+```bash
+# Global install gives you the ffmpeg-render-pro + ffmpeg-render-pro-mcp binaries
+npm install -g ffmpeg-render-pro
+
+# Or clone the repo directly
+git clone https://github.com/beeswaxpat/ffmpeg-render-pro.git
+cd ffmpeg-render-pro
+```
+
 ## Quick Start
 
 ```bash
-# Clone or install
-git clone https://github.com/beeswaxpat/ffmpeg-render-pro.git
-cd ffmpeg-render-pro
+# System info (workers, RAM, CPU, ffmpeg version)
+ffmpeg-render-pro info
 
-# Run the benchmark (5s test render, dashboard auto-opens)
-node examples/render-test.js
+# Probe hardware encoders
+ffmpeg-render-pro detect-gpu
 
-# Run a longer test
-node examples/render-test.js --duration=30
+# 5s benchmark render (dashboard auto-opens at http://127.0.0.1:8080)
+ffmpeg-render-pro benchmark
 
-# YouTube Shorts format (vertical 1080x1920)
-node examples/render-test.js --width=1080 --height=1920 --fps=30 --duration=60
+# Longer render, custom resolution
+ffmpeg-render-pro benchmark --duration=30 --width=1080 --height=1920 --fps=30
 
-# Check your GPU
-node bin/ffmpeg-render-pro.js detect-gpu
-
-# System info (workers, RAM, CPU)
-node bin/ffmpeg-render-pro.js info
+# Force CPU / GPU encoding
+ffmpeg-render-pro detect-gpu --cpu
+ffmpeg-render-pro detect-gpu --gpu
 ```
 
 ## CLI
 
 ```bash
+ffmpeg-render-pro info                # System snapshot
 ffmpeg-render-pro detect-gpu          # Probe hardware encoders
-ffmpeg-render-pro info                # Show system config
 ffmpeg-render-pro render <worker.js>  # Render with your worker script
 ffmpeg-render-pro benchmark           # Quick 5s test render
 ```
@@ -184,6 +192,14 @@ node examples/render-test.js --duration=30
 node examples/render-test.js --duration=60 --width=1080 --height=1920
 ```
 
+## Tests
+
+```bash
+npm test
+```
+
+A zero-dependency smoke suite covering module exports, input validation, dashboard path-safety (traversal + null-byte + double-encoding vectors), checkpoint round-trip, and MCP server stdio handshake.
+
 ## MCP Server
 
 ffmpeg-render-pro includes a Model Context Protocol (MCP) server with 6 tools. Works with Claude Code, Claude Desktop, and any MCP client.
@@ -191,9 +207,11 @@ ffmpeg-render-pro includes a Model Context Protocol (MCP) server with 6 tools. W
 ### Add to Claude Code
 
 ```bash
-claude mcp add --transport stdio ffmpeg-render-pro -- npx -y ffmpeg-render-pro-mcp
-# Or if installed locally:
-claude mcp add --transport stdio ffmpeg-render-pro -- node /path/to/src/mcp-server.mjs
+# After `npm install -g ffmpeg-render-pro` the MCP binary is on your PATH:
+claude mcp add --transport stdio ffmpeg-render-pro -- ffmpeg-render-pro-mcp
+
+# Or without global install (uses npx):
+claude mcp add --transport stdio ffmpeg-render-pro -- npx --yes --package=ffmpeg-render-pro ffmpeg-render-pro-mcp
 ```
 
 ### Add to Claude Desktop
@@ -204,8 +222,20 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "ffmpeg-render-pro": {
-      "command": "node",
-      "args": ["/path/to/ffmpeg-render-pro/src/mcp-server.mjs"]
+      "command": "ffmpeg-render-pro-mcp"
+    }
+  }
+}
+```
+
+Or, if you prefer not to install globally:
+
+```json
+{
+  "mcpServers": {
+    "ffmpeg-render-pro": {
+      "command": "npx",
+      "args": ["--yes", "--package=ffmpeg-render-pro", "ffmpeg-render-pro-mcp"]
     }
   }
 }

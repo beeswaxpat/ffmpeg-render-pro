@@ -64,6 +64,15 @@ function createEncoder(options) {
   const onStreamError = (err) => { streamError = err; };
   ffmpeg.stdin.on('error', onStreamError);
 
+  // Track the close state so finish() can resolve correctly even if ffmpeg
+  // has already exited by the time it's called.
+  let closed = false;
+  let closeCode = null;
+  ffmpeg.on('close', (code) => {
+    closed = true;
+    closeCode = code;
+  });
+
   ffmpeg.on('error', (err) => {
     streamError = err;
     if (process.env.FFMPEG_RENDER_PRO_DEBUG) {
@@ -96,6 +105,14 @@ function createEncoder(options) {
 
     finish() {
       return new Promise((resolve, reject) => {
+        // If ffmpeg already exited (race: the caller awaited writeFrame errors
+        // and then called finish()), resolve/reject using the captured exit code
+        // rather than hanging forever on a close event that already fired.
+        if (closed) {
+          if (closeCode === 0) resolve();
+          else reject(new Error(`ffmpeg exited with code ${closeCode}\n${stderrData.slice(-500)}`));
+          return;
+        }
         ffmpeg.on('close', (code) => {
           if (code === 0) {
             resolve();

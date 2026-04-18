@@ -17,6 +17,7 @@ API is fully backward-compatible; no worker scripts or MCP integrations need cha
 ### Fixed — Correctness
 
 - `writeFrame` in the `createEncoder` helper now surfaces stdin/stream errors instead of hanging on a never-resolved Promise.
+- `createEncoder().finish()` no longer hangs if ffmpeg already closed before it was called — it resolves/rejects with the captured exit code.
 - `SIGINT`/`SIGTERM` handlers are now scoped to each `renderParallel` call and removed on completion — no handler accumulation across repeated renders.
 - MCP server advertises the real package version (read from `package.json`) instead of a hardcoded string.
 - Worker fast-forward state is reported via a structured `{ type: 'fast-forward-start' }` message; the old substring-matched `log` message is still accepted for backward compatibility.
@@ -45,10 +46,13 @@ API is fully backward-compatible; no worker scripts or MCP integrations need cha
 ### Meta
 
 - Added `CHANGELOG.md` (this file).
-- Added smoke-test suite (`npm test` / `test/smoke.js`).
+- Added smoke-test suite (`npm test` / `test/smoke.js`) + MCP stdio smoke test (`test/mcp-smoke.js`).
 - Loose-pinned runtime deps so users pick up patch releases automatically.
 - Cleaned stale `preview/*.json` files from the repo.
 - Fixed placeholder README badge links.
+- Added `ffmpeg-render-pro-mcp` as an additional bin alias so the MCP invocation matches the README (the existing `ffmpeg-render-mcp` alias still works — no breakage).
+- Tightened Quick Start: `npm install -g ffmpeg-render-pro` is now the primary install route, with CLI examples using the installed binaries.
+- Corrected MCP install snippets in the README (`npx --package=ffmpeg-render-pro ffmpeg-render-pro-mcp` — the old `npx -y ffmpeg-render-pro-mcp` was never a valid invocation).
 
 ---
 
