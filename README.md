@@ -48,6 +48,20 @@ Built by [Beeswax Pat](https://github.com/beeswaxpat) with [Claude Code](https:/
 - **MCP server**: Model Context Protocol server with 6 tools, works with Claude Code, Claude Desktop, and any MCP client
 - **Cross-platform**: Windows, macOS, Linux. Any GPU or CPU-only. Requires Node.js >= 18 plus ffmpeg.
 
+## What's new in v1.3.0
+
+An Opus 4.8 review pass. Fully backward-compatible, no worker scripts or MCP integrations need changes.
+
+- Accurate worker count on small renders (no more idle "phantom" worker cards)
+- Even-dimension guard with a clear error up front (`yuv420p` needs even width and height)
+- `dashboardLingerMs` option so library calls can return immediately instead of holding the process open for 30s
+- `concatSegments` validates that every segment exists and is non-empty before joining
+- New `maxWorkers` / `--max-workers`, a `version` command, and full HEVC codec-arg coverage
+- MCP `render_video` gains `dashboard` / `auto_open` flags for headless use
+- `npm test` now runs the smoke suite and the MCP handshake; 39 to 49 tests
+
+See [CHANGELOG.md](CHANGELOG.md) for the complete list.
+
 ## Requirements
 
 - **Node.js** >= 18
