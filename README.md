@@ -144,7 +144,7 @@ await renderParallel({
 });
 ```
 
-Width and height must be even (the pipeline encodes `yuv420p`). For library use, set `dashboardLingerMs: 0` so the call resolves without holding the process open.
+Width and height must be even (the pipeline encodes `yuv420p`). For library use, set `dashboardLingerMs: 0` so the call resolves without holding the process open. `renderParallel` resolves with `{ outputPath, elapsed, totalFrames }`. Set `FFMPEG_RENDER_PRO_DEBUG=1` in the environment for full stack traces on error.
 
 ### Writing a Worker
 
@@ -185,6 +185,59 @@ ffmpeg.on('close', () => parentPort.postMessage({ type: 'done', workerId }));
 ```
 
 See `examples/basic-worker.js` for a complete working example.
+
+**Worker data** (injected via `worker_threads` `workerData`): `width`, `height`, `fps`, `seed`, `startFrame`, `endFrame`, `segmentPath`, `workerId`, `totalFrames`, `duration`, plus anything you pass in `renderParallel({ workerData })`.
+
+**Messages a worker posts** to the parent via `parentPort.postMessage(...)`:
+
+| Message | When | Fields |
+|---------|------|--------|
+| `{ type: 'progress' }` | periodically while encoding | `workerId`, `pct`, `fps`, `frame`, `eta` |
+| `{ type: 'fast-forward-start' }` | before replaying state up to `startFrame` (optional) | `workerId`, `frames` |
+| `{ type: 'done' }` | after the segment is fully written (required) | `workerId` |
+| `{ type: 'error' }` | on failure | `workerId`, `error` |
+
+Each worker writes its frame range to `segmentPath`; the renderer stream-copy concats the segments in order.
+
+## Post-processing API
+
+Use these directly, or via the CLI and MCP tools. Video is stream-copied where possible, so there is no quality loss.
+
+```js
+const { colorGrade, mergeAudio, concatSegments } = require('ffmpeg-render-pro');
+
+// Color grade with a built-in preset (noir, warm, cool, cinematic, vintage)
+await colorGrade({ inputPath: 'raw.mp4', outputPath: 'graded.mp4', preset: 'cinematic' });
+
+// ...or a custom ffmpeg -vf filter chain
+await colorGrade({ inputPath: 'raw.mp4', outputPath: 'graded.mp4', filter: 'eq=contrast=1.08:saturation=0.9', crf: 18 });
+
+// Merge audio: video is stream-copied, audio encoded to AAC. loop + loudnorm are optional.
+await mergeAudio({ videoPath: 'graded.mp4', audioPath: 'track.mp3', outputPath: 'final.mp4', bitrate: 320, loop: true, normalize: true });
+
+// Concatenate same-codec, same-resolution segments with stream copy (instant)
+await concatSegments(['part-000.mp4', 'part-001.mp4'], 'joined.mp4');
+```
+
+## Checkpoints (long renders)
+
+For multi-hour renders, pre-generate state snapshots so each worker replays only the frames since the nearest checkpoint instead of from frame 0.
+
+```js
+const { generateCheckpoints, loadCheckpoint, restoreCheckpoint } = require('ffmpeg-render-pro');
+
+// One-time update-only pass: advance your systems and snapshot every `interval` frames
+generateCheckpoints({ systems, totalFrames: 432000, fps: 60, checkpointDir: './.checkpoints', interval: 60000 });
+
+// Inside a worker: jump to the nearest snapshot at or below startFrame
+const cp = loadCheckpoint('./.checkpoints', startFrame);
+if (cp) {
+  const resumeFrame = restoreCheckpoint(cp, systems); // returns the snapshot's frame number
+  // fast-forward systems from resumeFrame to startFrame, then render
+}
+```
+
+`systems` is an object of named modules, each implementing `getState()` and `setState()` (plus `update(dt)` for `generateCheckpoints`).
 
 ## Modules
 
@@ -272,6 +325,8 @@ Or, if you prefer not to install globally:
 | `color_grade` | Apply presets (noir, warm, cool, cinematic, vintage) or custom filters |
 | `merge_audio` | Combine video + audio with loudness normalization |
 | `concat_videos` | Stream-copy join multiple videos (instant, no re-encode) |
+
+Each tool's full input schema (parameter names, types, defaults) is advertised by the server at runtime via the MCP `tools/list` method, so an agent can introspect it directly. `render_video` also accepts `dashboard` and `auto_open` booleans for headless use.
 
 ## Claude Code Skill
 

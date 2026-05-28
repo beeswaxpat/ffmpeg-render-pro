@@ -3,6 +3,12 @@
 All notable changes to `ffmpeg-render-pro` are documented in this file.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] - 2026-05-28
+
+Documentation only. No code changes; the published API is identical to 1.3.0.
+
+- README is now a complete standalone reference for both human and agent use. Added: the full worker contract (every `workerData` field plus the worker-to-parent message protocol), a Post-processing API section (`colorGrade`, `mergeAudio`, `concatSegments` signatures), a Checkpoints example for long renders, the `renderParallel` return shape, the `FFMPEG_RENDER_PRO_DEBUG` env var, a note that MCP tool schemas are introspectable at runtime, and a "What's new" summary.
+
 ## [1.3.0] - 2026-05-28
 
 An Opus 4.8 review pass: correctness, robustness, and developer experience.
