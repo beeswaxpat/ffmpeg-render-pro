@@ -3,6 +3,13 @@
 All notable changes to `ffmpeg-render-pro` are documented in this file.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [1.3.2] - 2026-05-28
+
+Documentation only.
+
+- Removed two dead `claude.ai/claude-code` links from the README (they returned 404). Functional references to Claude Code and Claude Desktop as MCP clients are unchanged.
+- De-versioned the README changelog pointer so it no longer goes stale on each release.
+
 ## [1.3.1] - 2026-05-28
 
 Documentation only. No code changes; the published API is identical to 1.3.0.

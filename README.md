@@ -34,7 +34,7 @@
 
 Parallel video rendering with live dashboard, GPU auto-detection, checkpoint system, and stream-copy concat. Includes an MCP server, a Claude Code skill, and a CLI.
 
-Built by [Beeswax Pat](https://github.com/beeswaxpat) with [Claude Code](https://claude.ai/claude-code) · Free and open source forever
+Built by [Beeswax Pat](https://github.com/beeswaxpat) · Free and open source forever
 
 ## Features
 
@@ -330,7 +330,7 @@ Each tool's full input schema (parameter names, types, defaults) is advertised b
 
 ## Claude Code Skill
 
-This repo includes a ready-to-use [Claude Code](https://claude.ai/claude-code) skill. To install it, copy the skill folder into your Claude skills directory:
+This repo includes a ready-to-use Claude Code skill. To install it, copy the skill folder into your Claude skills directory:
 
 ```bash
 # macOS / Linux
@@ -351,7 +351,7 @@ Once installed, Claude Code will automatically use the skill when you ask it to 
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for release notes. Latest: **v1.3.0** (review pass: phantom-worker fix, even-dimension guard, configurable dashboard linger, segment validation, HEVC codec args, `version` command).
+See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 ## License
 
