@@ -1,9 +1,9 @@
 /**
- * Basic Worker — Procedural test scene for ffmpeg-render-pro
+ * Basic Worker - Procedural test scene for ffmpeg-render-pro
  *
  * Generates animated gradient bars + floating particles using raw pixel buffers.
  * No external dependencies (no canvas, no images, no npm packages).
- * Works on any OS — just needs Node.js and ffmpeg.
+ * Works on any OS - just needs Node.js and ffmpeg.
  *
  * This worker is spawned by the parallel renderer. It receives frame range
  * via workerData and pipes raw BGRA frames to an ffmpeg encoder subprocess.
@@ -87,7 +87,7 @@ function renderFrame(frameNum, buffer) {
   const hueShift = t * 30; // slow rotation
 
   // Precompute per-bar × per-row colors ONCE, not per pixel.
-  // (numBars * height) hslToRgb calls instead of (width * height) — 20-40× less
+  // (numBars * height) hslToRgb calls instead of (width * height) - 20-40× less
   // work on 1080p+, a ~25% frame-rendering speedup.
   const barColorsBGR = new Uint8ClampedArray(numBars * height * 3);
   for (let b = 0; b < numBars; b++) {
@@ -214,6 +214,12 @@ async function main() {
 
   let stderrData = '';
   ffmpeg.stderr.on('data', (chunk) => { stderrData += chunk.toString(); });
+
+  // Surface spawn failures (e.g. ffmpeg missing mid-run) instead of crashing
+  // the worker with an unhandled 'error' event.
+  ffmpeg.on('error', (err) => {
+    parentPort.postMessage({ type: 'error', workerId, error: 'ffmpeg spawn failed: ' + err.message });
+  });
 
   const framesToRender = endFrame - startFrame;
   const reportInterval = Math.max(1, Math.floor(framesToRender / 100)); // ~100 progress updates

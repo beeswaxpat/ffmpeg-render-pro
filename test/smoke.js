@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Smoke Tests — ffmpeg-render-pro
+ * Smoke Tests - ffmpeg-render-pro
  *
  * Fast tests that don't render full videos. Meant to catch obvious
  * regressions: module exports, input validation, path-safety,
@@ -36,7 +36,7 @@ function test(name, fn) {
 }
 
 async function main() {
-  console.log('\n  ffmpeg-render-pro — smoke tests\n');
+  console.log('\n  ffmpeg-render-pro - smoke tests\n');
 
   // --- Module exports ---
   const lib = require('../src/index.js');
@@ -55,7 +55,7 @@ async function main() {
   test('checkFFmpeg returns object',   () => assert.strictEqual(typeof ff, 'object'));
   test('checkFFmpeg has available',    () => assert.strictEqual(typeof ff.available, 'boolean'));
   if (!ff.available) {
-    console.log('\n  !! ffmpeg not on PATH — skipping tests that require it');
+    console.log('\n  !! ffmpeg not on PATH - skipping tests that require it');
   }
 
   // --- validateResolution ---
@@ -77,6 +77,22 @@ async function main() {
   test('getResolutionTier 720p',  () => assert.strictEqual(lib.getResolutionTier(1280, 720), '720p'));
   test('getResolutionTier 1080p', () => assert.strictEqual(lib.getResolutionTier(1920, 1080), '1080p'));
   test('getResolutionTier 4k',    () => assert.strictEqual(lib.getResolutionTier(3840, 2160), '4k'));
+
+  // --- planWorkers: true worker count after ceil() chunking (no phantoms) ---
+  const { planWorkers } = require('../src/core/config.js');
+  test('planWorkers 150f/8 -> 8 workers', () => assert.strictEqual(planWorkers(150, 8).workers, 8));
+  test('planWorkers 10f/8 -> 5 real workers', () => assert.strictEqual(planWorkers(10, 8).workers, 5));
+  test('planWorkers 1f/8 -> 1 worker', () => assert.strictEqual(planWorkers(1, 8).workers, 1));
+  test('planWorkers covers every frame with no idle worker', () => {
+    const { workers, framesPerWorker } = planWorkers(10, 8);
+    assert.ok(workers * framesPerWorker >= 10, 'all frames covered');
+    assert.ok((workers - 1) * framesPerWorker < 10, 'no worker starts past the end');
+  });
+
+  // --- getCodecArgs: HEVC variants carry the hvc1 tag ---
+  test('getCodecArgs libx264',                () => assert.ok(lib.getCodecArgs('libx264').includes('libx264')));
+  test('getCodecArgs hevc_qsv tags hvc1',     () => assert.ok(lib.getCodecArgs('hevc_qsv', { cq: 18 }).includes('hvc1')));
+  test('getCodecArgs hevc_videotoolbox hvc1', () => assert.ok(lib.getCodecArgs('hevc_videotoolbox', { cq: 18 }).includes('hvc1')));
 
   // --- Dashboard path-safety (the critical security fix) ---
   const { resolveSafePath } = require('../src/core/dashboard-server.js');
@@ -166,6 +182,36 @@ async function main() {
         fps: 30, duration: 1, dashboardPort: 99999, dashboard: false,
       }),
       /Invalid dashboardPort/,
+    );
+  });
+  await test('renderParallel rejects odd dimensions (yuv420p)', async () => {
+    await assert.rejects(
+      () => lib.renderParallel({
+        workerScript: path.join(__dirname, '..', 'examples', 'basic-worker.js'),
+        outputPath: path.join(os.tmpdir(), 'smoke-odd.mp4'),
+        width: 1921, height: 1080, fps: 30, duration: 1, dashboard: false,
+      }),
+      /even width and height/,
+    );
+  });
+  await test('renderParallel rejects missing outputPath', async () => {
+    await assert.rejects(
+      () => lib.renderParallel({
+        workerScript: path.join(__dirname, '..', 'examples', 'basic-worker.js'),
+        fps: 30, duration: 1, dashboard: false,
+      }),
+      /outputPath is required/,
+    );
+  });
+
+  // --- concatSegments guards against missing/empty segments ---
+  await test('concatSegments rejects missing/empty segments', async () => {
+    await assert.rejects(
+      () => lib.concatSegments(
+        [path.join(os.tmpdir(), 'ffmpeg-render-pro-not-a-real-segment-' + Date.now() + '.mp4')],
+        path.join(os.tmpdir(), 'smoke-concat-out.mp4'),
+      ),
+      /missing or empty/,
     );
   });
 

@@ -1,6 +1,6 @@
 {
   "name": "ffmpeg-render-pro",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Parallel video rendering with live dashboard, GPU auto-detection, checkpoint system, and stream-copy concat. MCP server + Claude Code skill + CLI. The most powerful free ffmpeg rendering toolkit.",
   "main": "src/index.js",
   "bin": {
@@ -21,7 +21,10 @@
     "detect-gpu": "node bin/ffmpeg-render-pro.js detect-gpu",
     "info": "node bin/ffmpeg-render-pro.js info",
     "mcp": "node src/mcp-server.mjs",
-    "test": "node test/smoke.js"
+    "test": "node test/smoke.js && node test/mcp-smoke.js",
+    "test:smoke": "node test/smoke.js",
+    "test:mcp": "node test/mcp-smoke.js",
+    "prepublishOnly": "npm test"
   },
   "keywords": [
     "ffmpeg",

@@ -1,5 +1,5 @@
 /**
- * Checkpoint System — Generic state serialization for parallel rendering
+ * Checkpoint System - Generic state serialization for parallel rendering
  *
  * Eliminates fast-forward overhead by pre-generating system state snapshots
  * at regular intervals. Workers load the nearest checkpoint below their
@@ -8,7 +8,7 @@
  * 93% reduction in fast-forward time on 2-hour renders (432k frames).
  *
  * Any system that implements getState()/setState() can be checkpointed.
- * This module is GENERIC — it has zero knowledge of what your systems do.
+ * This module is GENERIC - it has zero knowledge of what your systems do.
  */
 const fs = require('fs');
 const path = require('path');
@@ -92,7 +92,7 @@ function restoreCheckpoint(checkpoint, systems) {
 
 /**
  * Generate checkpoints by running a sequential update-only pass.
- * No rendering — just advances all systems and saves state periodically.
+ * No rendering - just advances all systems and saves state periodically.
  *
  * @param {Object} options
  * @param {Object<string, { update: Function, getState: Function }>} options.systems - Named systems

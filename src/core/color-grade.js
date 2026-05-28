@@ -1,5 +1,5 @@
 /**
- * Color Grade — Apply ffmpeg video filter chains
+ * Color Grade - Apply ffmpeg video filter chains
  *
  * Accepts arbitrary ffmpeg -vf filter strings. Includes built-in presets
  * for common color grades.

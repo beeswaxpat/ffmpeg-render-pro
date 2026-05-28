@@ -1,5 +1,5 @@
 /**
- * Concat — Stream-copy segment concatenation (instant, no re-encode)
+ * Concat - Stream-copy segment concatenation (instant, no re-encode)
  *
  * Uses ffmpeg concat demuxer with -c copy. This is the ONLY correct way
  * to join MP4 segments. Never re-encode on concat.
@@ -14,7 +14,7 @@ const STDERR_CAP = 8192;
 
 /**
  * Concatenate multiple MP4 segments into one file.
- * Uses stream copy — instant regardless of file size.
+ * Uses stream copy - instant regardless of file size.
  *
  * @param {string[]} segmentPaths - Array of segment file paths
  * @param {string} outputPath - Output file path
@@ -24,6 +24,23 @@ function concatSegments(segmentPaths, outputPath) {
   return new Promise((resolve, reject) => {
     if (!Array.isArray(segmentPaths) || segmentPaths.length === 0) {
       return reject(new Error('concatSegments: at least one segment is required'));
+    }
+
+    // Validate every segment exists and is non-empty before invoking ffmpeg.
+    // A worker that crashed mid-encode can leave a missing or 0-byte segment;
+    // catching it here yields a clear error instead of a cryptic ffmpeg
+    // concat failure (or, worse, a silently truncated output).
+    const badSegments = [];
+    for (const p of segmentPaths) {
+      let size = -1;
+      try { size = fs.statSync(p).size; } catch {}
+      if (size <= 0) badSegments.push(p);
+    }
+    if (badSegments.length > 0) {
+      return reject(new Error(
+        `concatSegments: ${badSegments.length} of ${segmentPaths.length} segment(s) missing or empty:\n  ` +
+        badSegments.join('\n  '),
+      ));
     }
 
     // Write the list file to os.tmpdir() with a random suffix. This avoids

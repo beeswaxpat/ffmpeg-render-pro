@@ -1,10 +1,10 @@
 /**
- * Parallel Renderer — Split renders across N worker threads
+ * Parallel Renderer - Split renders across N worker threads
  *
  * The core engine. Splits frame ranges across workers, each encoding
  * independently to a segment MP4, then stream-copy concats the result.
  *
- * This module is GENERIC — it doesn't know what generates frames.
+ * This module is GENERIC - it doesn't know what generates frames.
  * You provide a workerScript path that handles frame generation.
  *
  * Architecture:
@@ -21,7 +21,7 @@ const { Worker } = require('worker_threads');
 const path = require('path');
 const fs = require('fs');
 const { concatSegments } = require('./concat');
-const { getOptimalWorkers } = require('./config');
+const { getOptimalWorkers, planWorkers } = require('./config');
 const { ProgressTracker } = require('./progress');
 const { startDashboard } = require('./dashboard-server');
 const { checkFFmpeg, validateResolution } = require('./gpu-detect');
@@ -43,6 +43,8 @@ const { checkFFmpeg, validateResolution } = require('./gpu-detect');
  * @param {boolean} [options.dashboard=true] - Enable live dashboard
  * @param {boolean} [options.autoOpen=true] - Auto-open dashboard in browser
  * @param {number} [options.dashboardPort=8080] - Dashboard starting port
+ * @param {number} [options.maxWorkers=8] - Cap for auto worker count (ignored when workerCount is set)
+ * @param {number} [options.dashboardLingerMs=30000] - How long to keep the dashboard alive after completion. Pass 0 to return immediately (library use).
  * @returns {Promise<{ outputPath: string, elapsed: number, totalFrames: number }>}
  */
 async function renderParallel(options) {
@@ -60,6 +62,8 @@ async function renderParallel(options) {
     dashboard = true,
     autoOpen = true,
     dashboardPort = 8080,
+    maxWorkers = 8,
+    dashboardLingerMs = 30000,
   } = options;
 
   // --- Validate inputs ---
@@ -69,6 +73,20 @@ async function renderParallel(options) {
   }
 
   validateResolution(width, height);
+
+  // The encode pipeline emits yuv420p, which requires even dimensions.
+  // Catch it here with a clear message instead of letting ffmpeg fail deep
+  // inside a worker with "height not divisible by 2".
+  if (width % 2 !== 0 || height % 2 !== 0) {
+    throw new Error(
+      `Resolution ${width}x${height} must have even width and height for yuv420p encoding. ` +
+      `Try ${width - (width % 2)}x${height - (height % 2)}.`
+    );
+  }
+
+  if (!outputPath || typeof outputPath !== 'string') {
+    throw new Error('outputPath is required and must be a string.');
+  }
 
   if (!workerScript || !fs.existsSync(workerScript)) {
     throw new Error(`Worker script not found: ${workerScript}`);
@@ -87,10 +105,12 @@ async function renderParallel(options) {
   }
 
   const totalFrames = Math.max(1, Math.floor(fps * duration));
-  const auto = getOptimalWorkers({ width, height });
+  const auto = getOptimalWorkers({ width, height, maxWorkers });
   const requestedN = Number.isInteger(requestedWorkers) && requestedWorkers > 0 ? requestedWorkers : auto.workers;
-  const numWorkers = Math.max(1, Math.min(requestedN, totalFrames));
-  const framesPerWorker = Math.ceil(totalFrames / numWorkers);
+  // planWorkers() returns the TRUE worker count after ceil() chunking, so the
+  // console banner, progress tracker, and dashboard never show idle phantom
+  // workers (e.g. 10 frames / 8 requested -> 5 real workers).
+  const { workers: numWorkers, framesPerWorker } = planWorkers(totalFrames, requestedN);
 
   // Ensure output directory exists
   const outputDir = path.dirname(path.resolve(outputPath));
@@ -102,7 +122,7 @@ async function renderParallel(options) {
 
   console.log('');
   console.log('='.repeat(60));
-  console.log(`  ffmpeg-render-pro \u2014 ${numWorkers} workers`);
+  console.log(`  ffmpeg-render-pro - ${numWorkers} workers`);
   console.log('='.repeat(60));
   console.log(`  Title:         ${title}`);
   console.log(`  Total frames:  ${totalFrames.toLocaleString()} (${duration}s @ ${fps}fps)`);
@@ -162,7 +182,7 @@ async function renderParallel(options) {
     for (const w of workers) {
       try { w.terminate(); } catch {}
     }
-    // Use rmSync (recursive, force) — handles locked files gracefully on Windows.
+    // Use rmSync (recursive, force) - handles locked files gracefully on Windows.
     try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
   }
 
@@ -217,13 +237,13 @@ async function renderParallel(options) {
           // Structured message from workers that are fast-forwarding state.
           forwardingWorkers.add(msg.workerId);
           progress.updateWorker(msg.workerId, { status: 'fast-forward' });
-          progress.setPhase('fast-forward', `Fast-forwarding worker state (${forwardingWorkers.size}/${numWorkers} workers) \u2014 this is the slow part...`);
+          progress.setPhase('fast-forward', `Fast-forwarding worker state (${forwardingWorkers.size}/${numWorkers} workers) - this is the slow part...`);
         } else if (msg.type === 'log') {
           // Backwards-compat: old workers used type:'log' with a 'Fast-forward' substring.
           if (msg.msg && msg.msg.includes('Fast-forward')) {
             forwardingWorkers.add(msg.workerId);
             progress.updateWorker(msg.workerId, { status: 'fast-forward' });
-            progress.setPhase('fast-forward', `Fast-forwarding worker state (${forwardingWorkers.size}/${numWorkers} workers) \u2014 this is the slow part...`);
+            progress.setPhase('fast-forward', `Fast-forwarding worker state (${forwardingWorkers.size}/${numWorkers} workers) - this is the slow part...`);
           }
         } else if (msg.type === 'done') {
           doneWorkers.add(msg.workerId);
@@ -266,7 +286,7 @@ async function renderParallel(options) {
     progress.setPhase('concatenating', `Joining ${numWorkers} segments with stream copy (instant, no re-encode)...`);
     await concatSegments(segmentPaths, outputPath);
 
-    // Cleanup temp dir (recursive, force — handles any stray files + Windows locks)
+    // Cleanup temp dir (recursive, force - handles any stray files + Windows locks)
     try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
 
     const elapsed = (Date.now() - startTime) / 1000;
@@ -275,11 +295,18 @@ async function renderParallel(options) {
     console.log(`  Render complete: ${totalFrames.toLocaleString()} frames in ${elapsed.toFixed(1)}s (${minutes}min)`);
     console.log(`  Output: ${outputPath}`);
 
-    // Keep dashboard alive for 30s after completion so user can see final state
+    // Keep the dashboard alive briefly after completion so the user can see
+    // the final state. The timer intentionally holds the event loop open for
+    // the CLI; library callers that want renderParallel() to resolve and
+    // return immediately can pass dashboardLingerMs: 0.
     if (dashboardHandle) {
-      setTimeout(() => {
+      if (dashboardLingerMs > 0) {
+        setTimeout(() => {
+          dashboardHandle.stop().catch(() => {});
+        }, dashboardLingerMs);
+      } else {
         dashboardHandle.stop().catch(() => {});
-      }, 30000);
+      }
     }
 
     removeSignalHandlers();

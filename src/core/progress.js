@@ -1,5 +1,5 @@
 /**
- * Progress Tracker — Per-worker progress collection and reporting
+ * Progress Tracker - Per-worker progress collection and reporting
  *
  * Emits events for the dashboard and terminal display.
  * Writes JSON progress files for the HTML dashboard to consume.
@@ -42,7 +42,7 @@ class ProgressTracker extends EventEmitter {
     // Write global config for HTML dashboard
     this._writeGlobalJSON();
 
-    // Terminal dashboard — tick once/sec: terminal redraw + fresh global.json
+    // Terminal dashboard - tick once/sec: terminal redraw + fresh global.json
     for (let i = 0; i < this.numWorkers + 1; i++) process.stdout.write('\n');
     this._dashboardInterval = setInterval(() => {
       this._drawTerminal();

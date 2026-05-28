@@ -38,15 +38,15 @@ Built by [Beeswax Pat](https://github.com/beeswaxpat) with [Claude Code](https:/
 
 ## Features
 
-- **Parallel rendering** — Split frames across N worker threads, concat with zero re-encoding
-- **GPU auto-detection** — Probes NVENC, VideoToolbox, AMF, VA-API, QSV with 1-frame validation
-- **Live dashboard** — Auto-opens in your browser with per-worker progress, FPS chart, ETA
-- **Checkpoint system** — 93% reduction in fast-forward overhead for long renders
-- **Color grading** — 5 built-in presets (noir, warm, cool, cinematic, vintage) + custom filters
-- **Audio merge** — Combine video + audio with loudness normalization, no video re-encode
-- **Deterministic output** — Seeded RNG ensures parallel workers produce identical results to sequential
-- **MCP server** — Model Context Protocol server with 6 tools, works with Claude Code, Claude Desktop, and any MCP client
-- **Cross-platform** — Windows, macOS, Linux. Any GPU or CPU-only. Requires Node.js >= 18 + ffmpeg.
+- **Parallel rendering**: Split frames across N worker threads, concat with zero re-encoding
+- **GPU auto-detection**: Probes NVENC, VideoToolbox, AMF, VA-API, QSV with 1-frame validation
+- **Live dashboard**: Auto-opens in your browser with per-worker progress, FPS chart, ETA
+- **Checkpoint system**: 93% reduction in fast-forward overhead for long renders
+- **Color grading**: 5 built-in presets (noir, warm, cool, cinematic, vintage) plus custom filters
+- **Audio merge**: Combine video + audio with loudness normalization, no video re-encode
+- **Deterministic output**: Seeded RNG ensures parallel workers produce identical results to sequential
+- **MCP server**: Model Context Protocol server with 6 tools, works with Claude Code, Claude Desktop, and any MCP client
+- **Cross-platform**: Windows, macOS, Linux. Any GPU or CPU-only. Requires Node.js >= 18 plus ffmpeg.
 
 ## Requirements
 
@@ -91,6 +91,7 @@ ffmpeg-render-pro info                # System snapshot
 ffmpeg-render-pro detect-gpu          # Probe hardware encoders
 ffmpeg-render-pro render <worker.js>  # Render with your worker script
 ffmpeg-render-pro benchmark           # Quick 5s test render
+ffmpeg-render-pro version             # Print the installed version
 ```
 
 ## API
@@ -121,11 +122,15 @@ await renderParallel({
   width: 1920,
   height: 1080,
   fps: 60,
-  duration: 60,        // seconds
+  duration: 60,         // seconds
   title: 'My Render',
-  autoOpen: true,      // auto-open dashboard in browser
+  autoOpen: true,       // auto-open dashboard in browser
+  maxWorkers: 8,        // cap for auto worker count (override with workerCount)
+  dashboardLingerMs: 0, // 0 = resolve immediately; CLI default keeps it up 30s
 });
 ```
+
+Width and height must be even (the pipeline encodes `yuv420p`). For library use, set `dashboardLingerMs: 0` so the call resolves without holding the process open.
 
 ### Writing a Worker
 
@@ -195,10 +200,12 @@ node examples/render-test.js --duration=60 --width=1080 --height=1920
 ## Tests
 
 ```bash
-npm test
+npm test          # smoke suite + MCP stdio handshake
+npm run test:smoke # smoke suite only
+npm run test:mcp   # MCP server handshake only
 ```
 
-A zero-dependency smoke suite covering module exports, input validation, dashboard path-safety (traversal + null-byte + double-encoding vectors), checkpoint round-trip, and MCP server stdio handshake.
+A zero-dependency suite covering module exports, input validation (including odd-dimension and worker-count math), dashboard path-safety (traversal + null-byte + double-encoding vectors), checkpoint round-trip, and the MCP server stdio handshake. `npm test` runs both the smoke suite and the MCP server test.
 
 ## MCP Server
 
@@ -271,11 +278,11 @@ Once installed, Claude Code will automatically use the skill when you ask it to 
 - **Dashboard server binds to `127.0.0.1` only.** It is never reachable from other machines on your network.
 - **No telemetry, no phone-home, no CDN loads.** Dashboard runs entirely from local files using system fonts.
 - **MCP server is a local-filesystem tool.** When wired into an AI agent, it will render, read, and write files anywhere the current user has access. Treat it like any other filesystem-enabled tool: only run it with a trusted agent, and consider restricting the process's working directory if you use it with untrusted prompts.
-- **Stream-copy concat uses temp files under `os.tmpdir()`.** Output paths you pass are still written as-is — make sure your output path is where you want it.
+- **Stream-copy concat uses temp files under `os.tmpdir()`.** Output paths you pass are still written as-is, so make sure your output path is where you want it.
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for release notes. Latest: **v1.2.0** — hardening pass (critical dashboard fix, path-traversal defense, performance improvements).
+See [CHANGELOG.md](CHANGELOG.md) for release notes. Latest: **v1.3.0** (review pass: phantom-worker fix, even-dimension guard, configurable dashboard linger, segment validation, HEVC codec args, `version` command).
 
 ## License
 

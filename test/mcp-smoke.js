@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * MCP smoke test — boots the stdio MCP server, runs through:
+ * MCP smoke test - boots the stdio MCP server, runs through:
  *   1. initialize handshake
  *   2. tools/list
  *   3. tools/call detect_gpu

@@ -1,5 +1,5 @@
 /**
- * Audio Merge — Combine video with audio track
+ * Audio Merge - Combine video with audio track
  *
  * Merges audio into video with stream-loop for short audio files,
  * optional loudness normalization, and no video re-encoding.

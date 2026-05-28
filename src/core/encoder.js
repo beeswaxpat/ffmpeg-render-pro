@@ -1,5 +1,5 @@
 /**
- * Encoder — Pipe raw frames to ffmpeg for encoding
+ * Encoder - Pipe raw frames to ffmpeg for encoding
  *
  * Accepts raw BGRA frames via stdin pipe. Supports CPU and GPU codecs
  * with backpressure handling for memory-safe rendering.

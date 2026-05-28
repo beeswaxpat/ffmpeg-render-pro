@@ -1,5 +1,5 @@
 /**
- * Auto-Configuration — Dynamic worker count and resource allocation
+ * Auto-Configuration - Dynamic worker count and resource allocation
  *
  * Determines optimal worker count based on resolution, available RAM,
  * and CPU core count. Respects GPU session limits.
@@ -63,6 +63,27 @@ function getOptimalWorkers(options = {}) {
 }
 
 /**
+ * Plan the worker split for a render.
+ *
+ * Chunks are sized by the *requested* worker count, but with ceil() chunking
+ * the trailing worker(s) can fall entirely past totalFrames (e.g. 10 frames
+ * across 8 workers yields 2-frame chunks and only 5 real workers). This
+ * returns the TRUE worker count so the console, progress tracker, and
+ * dashboard never display idle phantom workers.
+ *
+ * @param {number} totalFrames - Total frames to render (>= 1)
+ * @param {number} requestedWorkers - Desired worker count (auto or override)
+ * @returns {{ workers: number, framesPerWorker: number }}
+ */
+function planWorkers(totalFrames, requestedWorkers) {
+  const total = Math.max(1, Math.floor(totalFrames) || 1);
+  const capped = Math.max(1, Math.min(Math.floor(requestedWorkers) || 1, total));
+  const framesPerWorker = Math.ceil(total / capped);
+  const workers = Math.ceil(total / framesPerWorker);
+  return { workers, framesPerWorker };
+}
+
+/**
  * Get the full render configuration.
  */
 function getConfig(options = {}) {
@@ -108,4 +129,4 @@ function getConfig(options = {}) {
   };
 }
 
-module.exports = { getOptimalWorkers, getConfig, getResolutionTier };
+module.exports = { getOptimalWorkers, getConfig, getResolutionTier, planWorkers };

@@ -1,12 +1,12 @@
 /**
- * Dashboard Server — Zero-dependency HTTP server for the render dashboard
+ * Dashboard Server - Zero-dependency HTTP server for the render dashboard
  *
  * Serves the HTML dashboard and JSON progress files.
  * Auto-opens the browser before rendering starts.
  * Cross-platform: Windows, macOS, Linux.
  *
  * Security posture:
- *   - Binds to 127.0.0.1 (not 0.0.0.0) — never reachable off the local machine.
+ *   - Binds to 127.0.0.1 (not 0.0.0.0) - never reachable off the local machine.
  *   - Static-file server rooted at the render's `preview/` directory; requests
  *     are URL-decoded and reject path-traversal attempts.
  *   - CORS is same-origin only (no wildcard `*`). Connect-src CSP lets the
@@ -31,7 +31,7 @@ const MIME_TYPES = {
   '.svg':  'image/svg+xml',
 };
 
-// Tight CSP — only allow resources from the dashboard's own origin.
+// Tight CSP - only allow resources from the dashboard's own origin.
 // `unsafe-inline` is required for the bundled <style> and <script> blocks.
 const CSP = [
   "default-src 'self'",
@@ -46,7 +46,7 @@ const CSP = [
 
 /**
  * Open a URL in the default browser. Cross-platform.
- * Uses `spawn` with an argv array — no shell interpolation, no injection.
+ * Uses `spawn` with an argv array - no shell interpolation, no injection.
  *
  * @param {string} url
  */
@@ -56,7 +56,7 @@ function openBrowser(url) {
 
   switch (platform) {
     case 'win32':
-      // cmd.exe /c start "" "<url>" — the empty title arg is required by `start`
+      // cmd.exe /c start "" "<url>" - the empty title arg is required by `start`
       // when the first quoted arg would otherwise be misinterpreted as the title.
       cmd = 'cmd.exe';
       args = ['/c', 'start', '', url];
@@ -91,7 +91,7 @@ function openBrowser(url) {
  * Returns `null` if the path escapes the root or is otherwise invalid.
  *
  * Defense stack:
- *   1. Strip query + fragment from the raw string (do NOT use WHATWG URL —
+ *   1. Strip query + fragment from the raw string (do NOT use WHATWG URL -
  *      it auto-normalizes `/../x` to `/x`, hiding traversal intent).
  *   2. Recursively percent-decode until stable (defeats double encoding like
  *      `%252E%252E` → `%2E%2E` → `..`).
@@ -105,7 +105,7 @@ function resolveSafePath(rawUrl, previewDir) {
   try {
     if (typeof rawUrl !== 'string') return null;
 
-    // 1. Strip query + fragment (the raw string — no URL normalization).
+    // 1. Strip query + fragment (the raw string - no URL normalization).
     let raw = rawUrl;
     const qIdx = raw.indexOf('?');
     if (qIdx !== -1) raw = raw.slice(0, qIdx);
@@ -242,16 +242,20 @@ function startDashboard(options) {
         return;
       }
 
-      server.once('error', (err) => {
+      const onListenError = (err) => {
         if (err.code === 'EADDRINUSE') {
           port++;
           tryListen(attempt + 1);
         } else {
           reject(err);
         }
-      });
+      };
+      server.once('error', onListenError);
 
       server.listen(port, BIND_HOST, () => {
+        // Listening succeeded: drop the retry handler so a later runtime
+        // error can't re-enter tryListen() on an already-bound socket.
+        server.removeListener('error', onListenError);
         const url = `http://${BIND_HOST}:${port}`;
         if (!silent) {
           console.log('');

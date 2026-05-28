@@ -1,5 +1,5 @@
 /**
- * render-test.js — Quick benchmark render to test the full pipeline
+ * render-test.js - Quick benchmark render to test the full pipeline
  *
  * Renders a short procedural video using the basic-worker, with the
  * live dashboard, parallel workers, and stream-copy concat.
@@ -37,7 +37,7 @@ async function main() {
   const auto = getOptimalWorkers({ width, height });
 
   console.log('');
-  console.log('  ffmpeg-render-pro — Benchmark Test');
+  console.log('  ffmpeg-render-pro - Benchmark Test');
   console.log('  ==================================');
   console.log(`  GPU:       ${gpu.label} (${gpu.isGpu ? 'hardware' : 'software'})`);
   console.log(`  Workers:   ${workerCount || auto.workers} (auto: ${auto.workers})`);

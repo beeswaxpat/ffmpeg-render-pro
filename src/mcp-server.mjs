@@ -3,16 +3,16 @@
  * ffmpeg-render-pro MCP Server
  *
  * Exposes the ffmpeg-render-pro toolkit as Model Context Protocol tools.
- * Runs over stdio transport — compatible with Claude Code, Claude Desktop,
+ * Runs over stdio transport - compatible with Claude Code, Claude Desktop,
  * and any MCP client.
  *
  * Tools:
- *   detect_gpu       — Probe available hardware encoders
- *   system_info      — Show system config (workers, RAM, CPU, ffmpeg version)
- *   render_video     — Parallel render with live dashboard
- *   color_grade      — Apply color grading presets or custom filters
- *   merge_audio      — Combine video + audio (no video re-encode)
- *   concat_videos    — Stream-copy concatenate multiple video files
+ *   detect_gpu       - Probe available hardware encoders
+ *   system_info      - Show system config (workers, RAM, CPU, ffmpeg version)
+ *   render_video     - Parallel render with live dashboard
+ *   color_grade      - Apply color grading presets or custom filters
+ *   merge_audio      - Combine video + audio (no video re-encode)
+ *   concat_videos    - Stream-copy concatenate multiple video files
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -133,9 +133,11 @@ server.registerTool(
       workers: z.number().optional().describe('Override auto-detected worker count'),
       seed: z.number().default(42).describe('RNG seed for deterministic output'),
       title: z.string().default('Render').describe('Title shown in dashboard'),
+      dashboard: z.boolean().default(true).describe('Serve the live HTML dashboard'),
+      auto_open: z.boolean().default(true).describe('Auto-open the dashboard in a browser (set false for headless/server use)'),
     },
   },
-  async ({ worker_script, output_path, width, height, fps, duration, workers, seed, title }) => {
+  async ({ worker_script, output_path, width, height, fps, duration, workers, seed, title, dashboard, auto_open }) => {
     try {
       validateResolution(width, height);
 
@@ -153,8 +155,8 @@ server.registerTool(
         workerCount: workers,
         seed,
         title,
-        dashboard: true,
-        autoOpen: true,
+        dashboard,
+        autoOpen: auto_open,
       });
 
       const avgFps = (result.totalFrames / result.elapsed).toFixed(1);

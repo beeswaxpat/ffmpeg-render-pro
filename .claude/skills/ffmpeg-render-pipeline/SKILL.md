@@ -1,20 +1,20 @@
 ---
 name: ffmpeg-render-pipeline
-description: Use when rendering video or audio with ffmpeg — parallel rendering, GPU encoding, audio mixing, checkpoint systems, live dashboards, minterpolate optical flow, color grading, and YouTube-optimized output. Trigger on any video/audio render task.
+description: Use when rendering video or audio with ffmpeg - parallel rendering, GPU encoding, audio mixing, checkpoint systems, live dashboards, minterpolate optical flow, color grading, and YouTube-optimized output. Trigger on any video/audio render task.
 argument-hint: [task-description]
 ---
 
-# ffmpeg Render Pipeline — Complete Reference
+# ffmpeg Render Pipeline - Complete Reference
 
-You are an expert video/audio render engineer. This skill covers the **ffmpeg-render-pro** toolkit — a parallel rendering system optimized for YouTube Shorts and long-form videos.
+You are an expert video/audio render engineer. This skill covers the **ffmpeg-render-pro** toolkit - a parallel rendering system optimized for YouTube Shorts and long-form videos.
 
 **Toolkit location:** The user may have `ffmpeg-render-pro` installed locally or via npm. Check with `node -e "require('ffmpeg-render-pro')"` or look for it on the Desktop.
 
 ## Prerequisites
 
 Before any render task, verify:
-1. **Node.js >= 18** — `node --version`
-2. **ffmpeg on PATH** — `ffmpeg -version`
+1. **Node.js >= 18** - `node --version`
+2. **ffmpeg on PATH** - `ffmpeg -version`
 3. If ffmpeg is missing, tell the user: "Install ffmpeg from https://ffmpeg.org/download.html and ensure it's on your PATH."
 
 ## Quick Start (for any render task)
@@ -38,12 +38,12 @@ node bin/ffmpeg-render-pro.js detect-gpu --gpu
 
 ## Core Rules (ALWAYS follow)
 
-1. **Pre-scale BEFORE heavy processing** — Never run expensive filters (minterpolate, color grading) on source resolution. Downscale to target resolution FIRST.
-2. **Parallel rendering when possible** — 8-worker parallel pipeline with segment concat for procedural video. Single process for minterpolate (segment overhead dominates).
-3. **GPU encoding when available** — Use `detectGPU()` to auto-detect. Use `--cpu` flag to force software encoding if GPU causes issues. Use `--gpu` flag to require hardware encoding.
-4. **Live render dashboard REQUIRED** — The dashboard auto-opens in the browser before rendering starts. Every render gets a live progress view.
-5. **One render at a time** — Sequential is faster than competing for cores.
-6. **`-movflags +faststart` on EVERYTHING** — Required for YouTube uploads and streaming.
+1. **Pre-scale BEFORE heavy processing** - Never run expensive filters (minterpolate, color grading) on source resolution. Downscale to target resolution FIRST.
+2. **Parallel rendering when possible** - 8-worker parallel pipeline with segment concat for procedural video. Single process for minterpolate (segment overhead dominates).
+3. **GPU encoding when available** - Use `detectGPU()` to auto-detect. Use `--cpu` flag to force software encoding if GPU causes issues. Use `--gpu` flag to require hardware encoding.
+4. **Live render dashboard REQUIRED** - The dashboard auto-opens in the browser before rendering starts. Every render gets a live progress view.
+5. **One render at a time** - Sequential is faster than competing for cores.
+6. **`-movflags +faststart` on EVERYTHING** - Required for YouTube uploads and streaming.
 
 ---
 
@@ -57,11 +57,11 @@ The toolkit auto-detects the best encoder for the user's system:
 | macOS    | VideoToolbox, Quick Sync, then CPU fallback |
 | Linux    | NVENC, VA-API, Quick Sync, then CPU fallback |
 
-Each encoder is validated with a 1-frame test encode — not just checked for existence. Results are cached for 7 days.
+Each encoder is validated with a 1-frame test encode - not just checked for existence. Results are cached for 7 days.
 
 ### Force Modes
-- `--cpu` or `forceEncoder: 'cpu'` — Skip all GPU detection, use libx264. Use this if GPU encoding produces artifacts or errors.
-- `--gpu` or `forceEncoder: 'gpu'` — Require a hardware encoder. Fails with a clear error if none found. Use this when you know the user has a GPU and want maximum speed.
+- `--cpu` or `forceEncoder: 'cpu'` - Skip all GPU detection, use libx264. Use this if GPU encoding produces artifacts or errors.
+- `--gpu` or `forceEncoder: 'gpu'` - Require a hardware encoder. Fails with a clear error if none found. Use this when you know the user has a GPU and want maximum speed.
 
 ### Encoding Presets
 
@@ -169,13 +169,13 @@ await mergeAudio({
 ```
 
 ### 3-Layer Audio Architecture
-1. **Main Layer (100% volume)** — Close, textured, rhythmic. Long recordings (20+ min).
-2. **Background Layer (45% volume)** — Diffuse atmosphere. Short loops work.
-3. **Accents (12-20% volume)** — Sparse one-shots. Fade in/out. Never in first 3 min or last 2 min.
+1. **Main Layer (100% volume)** - Close, textured, rhythmic. Long recordings (20+ min).
+2. **Background Layer (45% volume)** - Diffuse atmosphere. Short loops work.
+3. **Accents (12-20% volume)** - Sparse one-shots. Fade in/out. Never in first 3 min or last 2 min.
 
 ### Critical Audio Rules
-- `amix normalize=0` — Prevents auto-level crushing
-- `alimiter=limit=0.95` — Prevent clipping
+- `amix normalize=0` - Prevents auto-level crushing
+- `alimiter=limit=0.95` - Prevent clipping
 - `loudnorm=I=-22:TP=-2:LRA=7` for YouTube normalization
 - 320kbps stereo, 44100 Hz output
 
@@ -235,10 +235,10 @@ node examples/render-test.js --width=1080 --height=1920 --fps=30 --duration=60
 
 ## Safety & Cross-Platform Notes
 
-- **No external dependencies** — Zero npm packages needed. Only Node.js + ffmpeg.
-- **No network calls** — Dashboard is localhost-only. No telemetry, no phone-home.
-- **No CDN loads** — Dashboard uses system fonts, no external resources.
-- **Path handling** — All paths use `path.join()` for cross-platform safety.
-- **Graceful shutdown** — SIGINT/SIGTERM handlers clean up temp files and kill workers.
-- **Input validation** — Resolution capped at 8K, fps 1-240, NaN-safe flag parsing.
-- **Works offline** — Everything runs locally.
+- **No external dependencies** - Zero npm packages needed. Only Node.js + ffmpeg.
+- **No network calls** - Dashboard is localhost-only. No telemetry, no phone-home.
+- **No CDN loads** - Dashboard uses system fonts, no external resources.
+- **Path handling** - All paths use `path.join()` for cross-platform safety.
+- **Graceful shutdown** - SIGINT/SIGTERM handlers clean up temp files and kill workers.
+- **Input validation** - Resolution capped at 8K, fps 1-240, NaN-safe flag parsing.
+- **Works offline** - Everything runs locally.

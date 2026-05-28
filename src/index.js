@@ -1,5 +1,5 @@
 /**
- * ffmpeg-render-pro — Parallel video rendering with live dashboard,
+ * ffmpeg-render-pro - Parallel video rendering with live dashboard,
  * GPU auto-detection, checkpoint system, and stream-copy concat.
  *
  * @module ffmpeg-render-pro

@@ -51,7 +51,15 @@ function getForceEncoder(flags) {
   return undefined;
 }
 
+const VERSION_COMMANDS = new Set(['version', '--version', '-v']);
+
 async function main() {
+  // Version is answerable without ffmpeg installed.
+  if (VERSION_COMMANDS.has(command)) {
+    console.log(require('../package.json').version);
+    return;
+  }
+
   // Pre-flight: check ffmpeg for all commands except help
   if (command && command !== 'help') {
     const status = checkFFmpeg();
@@ -64,7 +72,7 @@ async function main() {
   switch (command) {
     case 'detect-gpu': {
       const flags = parseFlags(args.slice(1));
-      console.log('\n  ffmpeg-render-pro \u2014 GPU Detection\n');
+      console.log('\n  ffmpeg-render-pro - GPU Detection\n');
       const forceEncoder = getForceEncoder(flags);
       const result = detectGPU({ force: true, verbose: true, forceEncoder });
       console.log('\n  Result:');
@@ -82,7 +90,7 @@ async function main() {
       const gpu = detectGPU({ forceEncoder });
       const config = getConfig({ gpuResult: gpu });
       const ffmpeg = checkFFmpeg();
-      console.log('\n  ffmpeg-render-pro \u2014 System Info\n');
+      console.log('\n  ffmpeg-render-pro - System Info\n');
       console.log(`    Platform:     ${config.system.platform} (${config.system.arch})`);
       console.log(`    CPU cores:    ${config.system.cpuCores}`);
       console.log(`    RAM:          ${config.system.totalRamMB}MB total, ${config.system.freeRamMB}MB free`);
@@ -113,6 +121,7 @@ async function main() {
         fps: safeInt(flags.fps, 60),
         duration: safeInt(flags.duration, 60),
         workerCount: flags.workers ? safeInt(flags.workers) : undefined,
+        maxWorkers: flags['max-workers'] ? safeInt(flags['max-workers'], 8) : undefined,
         seed: safeInt(flags.seed, 42),
         title: (typeof flags.title === 'string') ? flags.title : path.basename(workerScript, '.js'),
       });
@@ -128,7 +137,7 @@ async function main() {
       const height = safeInt(flags.height, 1080);
       const fps = safeInt(flags.fps, 30);
 
-      console.log('\n  ffmpeg-render-pro \u2014 Benchmark\n');
+      console.log('\n  ffmpeg-render-pro - Benchmark\n');
       console.log(`  Rendering ${duration}s test video at ${width}x${height} @ ${fps}fps\n`);
 
       const result = await renderParallel({
@@ -152,21 +161,23 @@ async function main() {
 
     default:
       console.log(`
-  ffmpeg-render-pro \u2014 Parallel video rendering toolkit
+  ffmpeg-render-pro - Parallel video rendering toolkit
 
   Commands:
     detect-gpu                Probe available hardware encoders
     info                      Show system config (workers, RAM, CPU)
     render <worker.js>        Run a render with the given worker script
     benchmark                 Quick 5s test render
+    version                   Print the installed version
 
   Render options:
-    --width=1920              Frame width (max 7680)
-    --height=1080             Frame height (max 4320)
+    --width=1920              Frame width (max 7680, must be even)
+    --height=1080             Frame height (max 4320, must be even)
     --fps=60                  Framerate (1-240)
     --duration=60             Duration in seconds
     --output=output.mp4       Output file path
     --workers=8               Override worker count
+    --max-workers=8           Cap for auto worker count
     --seed=42                 RNG seed for determinism
     --title="My Render"       Dashboard title
 

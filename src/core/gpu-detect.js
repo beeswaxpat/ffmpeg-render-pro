@@ -1,5 +1,5 @@
 /**
- * GPU Detection — Cross-platform encoder discovery
+ * GPU Detection - Cross-platform encoder discovery
  *
  * Probes ffmpeg for available hardware encoders, validates each with
  * a 1-frame test encode, and returns the best available option.
@@ -7,8 +7,8 @@
  * Priority: h264_nvenc > h264_videotoolbox > h264_amf > h264_vaapi > h264_qsv > libx264
  *
  * Force modes:
- *   forceEncoder: 'cpu'  — skip GPU probing, always use libx264
- *   forceEncoder: 'gpu'  — fail if no GPU encoder found
+ *   forceEncoder: 'cpu'  - skip GPU probing, always use libx264
+ *   forceEncoder: 'gpu'  - fail if no GPU encoder found
  */
 const { spawnSync } = require('child_process');
 const fs = require('fs');
@@ -155,7 +155,7 @@ function detectGPU(options = {}) {
   // Re-probing? Clear the encoders cache so we re-read ffmpeg -encoders.
   if (force) _encodersListCache = null;
 
-  // Force CPU mode — skip all probing
+  // Force CPU mode - skip all probing
   if (forceEncoder === 'cpu') {
     if (verbose) console.log('  GPU detection: forced CPU mode (--cpu)');
     return {
@@ -201,7 +201,7 @@ function detectGPU(options = {}) {
     }
   }
 
-  // Force GPU mode — fail if none found
+  // Force GPU mode - fail if none found
   if (forceEncoder === 'gpu' && !isGpu) {
     throw new Error(
       'GPU encoding forced (--gpu) but no hardware encoder found.\n' +
@@ -273,6 +273,14 @@ function getCodecArgs(encoder, options = {}) {
       return ['-c:v', 'h264_vaapi', '-qp', String(cq)];
     case 'h264_qsv':
       return ['-c:v', 'h264_qsv', '-global_quality', String(cq)];
+    case 'hevc_videotoolbox':
+      return ['-c:v', 'hevc_videotoolbox', '-q:v', String(Math.round(cq * 2.5)), '-tag:v', 'hvc1'];
+    case 'hevc_amf':
+      return ['-c:v', 'hevc_amf', '-quality', 'balanced', '-rc', 'cqp', '-qp_i', String(cq), '-qp_p', String(cq), '-tag:v', 'hvc1'];
+    case 'hevc_vaapi':
+      return ['-c:v', 'hevc_vaapi', '-qp', String(cq), '-tag:v', 'hvc1'];
+    case 'hevc_qsv':
+      return ['-c:v', 'hevc_qsv', '-global_quality', String(cq), '-tag:v', 'hvc1'];
     default:
       return ['-c:v', encoder, '-preset', preset || 'fast', '-crf', String(crf)];
   }

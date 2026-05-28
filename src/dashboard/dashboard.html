@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>ffmpeg-render-pro — Dashboard</title>
+<title>ffmpeg-render-pro - Dashboard</title>
 <style>
-  /* System monospace font stack — no external CDN dependencies */
+  /* System monospace font stack - no external CDN dependencies */
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -604,7 +604,7 @@
 
   <!-- Footer -->
   <div class="footer">
-    <span>ffmpeg-render-pro &mdash; Parallel Rendering Toolkit</span>
+    <span>ffmpeg-render-pro - Parallel Rendering Toolkit</span>
     <a href="https://github.com/beeswaxpat/ffmpeg-render-pro" target="_blank">github.com/beeswaxpat/ffmpeg-render-pro</a>
   </div>
 
@@ -784,7 +784,7 @@ async function poll() {
       const title = global.title || 'ffmpeg-render-pro';
       document.getElementById('subtitle').textContent =
         `${title} | ${res} | ${TOTAL_FRAMES.toLocaleString()} frames | ${NUM_WORKERS} workers`;
-      document.title = `${title} — ffmpeg-render-pro`;
+      document.title = `${title} - ffmpeg-render-pro`;
 
       if (global.phase) updatePhaseStrip(global.phase, global.phaseDetail);
 
@@ -804,7 +804,7 @@ async function poll() {
   let activeWorkers = 0;
   const framesPerWorker = NUM_WORKERS > 0 ? Math.ceil(TOTAL_FRAMES / NUM_WORKERS) : 0;
 
-  // Fetch all worker JSONs in parallel — was sequential (N × latency per tick).
+  // Fetch all worker JSONs in parallel - was sequential (N × latency per tick).
   const bust = Date.now();
   const responses = await Promise.all(
     Array.from({ length: NUM_WORKERS }, (_, i) =>
@@ -848,7 +848,7 @@ async function poll() {
     etaEl.textContent = done ? 'Complete' : status === 'fast-forward' ? 'Fast-forwarding...' : eta > 0 ? 'ETA ' + formatEta(eta) : 'Waiting...';
   }
 
-  // Update globals — freeze elapsed when render is done
+  // Update globals - freeze elapsed when render is done
   const elapsed = renderComplete ? finalElapsed : (Date.now() - renderStartTime) / 1000;
   let overallPct = NUM_WORKERS > 0 ? (totalPctSum / NUM_WORKERS) : 0;
   const totalFramesDone = Math.round(overallPct / 100 * TOTAL_FRAMES);
@@ -862,7 +862,7 @@ async function poll() {
   document.getElementById('overall-fill').style.width = overallPct + '%';
   document.getElementById('overall-detail').textContent = overallPct.toFixed(1) + '%';
   document.getElementById('overall-bar-text').textContent =
-    overallPct < 1 ? 'Starting...' : Math.round(overallPct) + '% \u2014 ' + totalFps.toFixed(1) + ' fps';
+    overallPct < 1 ? 'Starting...' : Math.round(overallPct) + '% - ' + totalFps.toFixed(1) + ' fps';
   document.getElementById('worker-sub').textContent = activeWorkers + ' active';
 
   if (totalFps > 0) {
@@ -896,7 +896,7 @@ async function poll() {
     const dot = document.getElementById('live-dot');
     dot.classList.add('complete');
     dot.classList.remove('waiting');
-    document.getElementById('overall-bar-text').textContent = 'COMPLETE \u2014 ' + formatTime(finalElapsed);
+    document.getElementById('overall-bar-text').textContent = 'COMPLETE - ' + formatTime(finalElapsed);
     document.getElementById('eta').textContent = 'Done';
     document.getElementById('eta-sub').textContent = formatTime(finalElapsed) + ' total';
     document.getElementById('total-fps').textContent = (TOTAL_FRAMES / finalElapsed).toFixed(1);
