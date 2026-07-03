@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.beeswaxpat/ffmpeg-render-pro",
-  "description": "Parallel video rendering tools: GPU encoder detection, render with live dashboard, color grading, audio merge, and stream-copy concat.",
+  "description": "Parallel video rendering tools: detect GPU encoders, render, color grade, merge audio, concat.",
   "repository": {
     "url": "https://github.com/beeswaxpat/ffmpeg-render-pro",
     "source": "github"
