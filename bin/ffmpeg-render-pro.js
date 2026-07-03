@@ -33,13 +33,38 @@ function parseFlags(args) {
 }
 
 /**
- * Safely parse an integer from a flag value.
+ * Safely parse a positive integer from a flag value.
  * Returns the default if the value is missing, empty, or NaN.
  */
 function safeInt(value, defaultValue) {
   if (value === undefined || value === null || value === true) return defaultValue;
   const parsed = parseInt(value, 10);
   return isNaN(parsed) || parsed <= 0 ? defaultValue : parsed;
+}
+
+/**
+ * Safely parse a positive number (fractions allowed, e.g. --duration=2.5).
+ */
+function safeNum(value, defaultValue) {
+  if (value === undefined || value === null || value === true) return defaultValue;
+  const parsed = parseFloat(value);
+  return !Number.isFinite(parsed) || parsed <= 0 ? defaultValue : parsed;
+}
+
+/**
+ * Safely parse a seed. Unlike safeInt, 0 (and negatives) are valid seeds.
+ */
+function safeSeed(value, defaultValue) {
+  if (value === undefined || value === null || value === true) return defaultValue;
+  const parsed = parseInt(value, 10);
+  return isNaN(parsed) ? defaultValue : parsed;
+}
+
+/**
+ * String flag value or default ("--output" with no value must not crash).
+ */
+function safeStr(value, defaultValue) {
+  return typeof value === 'string' && value.length > 0 ? value : defaultValue;
 }
 
 /**
@@ -115,15 +140,19 @@ async function main() {
 
       await renderParallel({
         workerScript,
-        outputPath: path.resolve(flags.output || 'output.mp4'),
+        outputPath: path.resolve(safeStr(flags.output, 'output.mp4')),
         width: safeInt(flags.width, 1920),
         height: safeInt(flags.height, 1080),
         fps: safeInt(flags.fps, 60),
-        duration: safeInt(flags.duration, 60),
+        duration: safeNum(flags.duration, 60),
         workerCount: flags.workers ? safeInt(flags.workers) : undefined,
         maxWorkers: flags['max-workers'] ? safeInt(flags['max-workers'], 8) : undefined,
-        seed: safeInt(flags.seed, 42),
-        title: (typeof flags.title === 'string') ? flags.title : path.basename(workerScript, '.js'),
+        seed: safeSeed(flags.seed, 42),
+        title: safeStr(flags.title, path.basename(workerScript, '.js')),
+        dashboard: flags['no-dashboard'] !== true,
+        autoOpen: flags['no-open'] !== true && flags['no-dashboard'] !== true,
+        dashboardPort: safeInt(flags.port, 8080),
+        dashboardLingerMs: flags['linger-ms'] !== undefined ? safeSeed(flags['linger-ms'], 30000) : undefined,
       });
       break;
     }
@@ -131,8 +160,8 @@ async function main() {
     case 'benchmark': {
       const flags = parseFlags(args.slice(1));
       const exampleWorker = path.join(__dirname, '..', 'examples', 'basic-worker.js');
-      const outputPath = path.resolve(flags.output || 'benchmark-output.mp4');
-      const duration = safeInt(flags.duration, 5);
+      const outputPath = path.resolve(safeStr(flags.output, 'benchmark-output.mp4'));
+      const duration = safeNum(flags.duration, 5);
       const width = safeInt(flags.width, 1920);
       const height = safeInt(flags.height, 1080);
       const fps = safeInt(flags.fps, 30);
@@ -144,8 +173,13 @@ async function main() {
         workerScript: exampleWorker,
         outputPath,
         width, height, fps, duration,
+        workerCount: flags.workers ? safeInt(flags.workers) : undefined,
         title: 'Benchmark',
         seed: 42,
+        dashboard: flags['no-dashboard'] !== true,
+        autoOpen: flags['no-open'] !== true && flags['no-dashboard'] !== true,
+        dashboardPort: safeInt(flags.port, 8080),
+        dashboardLingerMs: flags['linger-ms'] !== undefined ? safeSeed(flags['linger-ms'], 30000) : undefined,
       });
 
       const avgFps = (result.totalFrames / result.elapsed).toFixed(1);
@@ -174,31 +208,41 @@ async function main() {
     --width=1920              Frame width (max 7680, must be even)
     --height=1080             Frame height (max 4320, must be even)
     --fps=60                  Framerate (1-240)
-    --duration=60             Duration in seconds
+    --duration=60             Duration in seconds (fractions allowed, e.g. 2.5)
     --output=output.mp4       Output file path
     --workers=8               Override worker count
     --max-workers=8           Cap for auto worker count
-    --seed=42                 RNG seed for determinism
+    --seed=42                 RNG seed for determinism (0 is valid)
     --title="My Render"       Dashboard title
 
-  Encoder options:
+  Dashboard options (render + benchmark):
+    --no-dashboard            Disable the live dashboard entirely
+    --no-open                 Serve the dashboard but don't auto-open a browser
+    --port=8080               Dashboard starting port
+    --linger-ms=30000         How long the dashboard stays up after completion (0 = exit immediately)
+
+  Encoder options (detect-gpu + info):
     --cpu                     Force CPU encoding (libx264), skip GPU detection
     --gpu                     Force GPU encoding, fail if no hardware encoder
+    Note: parallel segment encoding always uses CPU by design (GPU encoder
+    session limits); GPU encoders apply to final single-pass encodes.
 
   Benchmark options:
     --duration=5              Override benchmark duration
     --width=1920              Frame width
     --height=1080             Frame height
     --fps=30                  Framerate
+    --workers=8               Override worker count
 
   Examples:
     ffmpeg-render-pro detect-gpu
     ffmpeg-render-pro detect-gpu --cpu
     ffmpeg-render-pro info
     ffmpeg-render-pro render my-worker.js --duration=60 --output=video.mp4
-    ffmpeg-render-pro render my-worker.js --cpu --width=1080 --height=1920
+    ffmpeg-render-pro render my-worker.js --width=1080 --height=1920
+    ffmpeg-render-pro render my-worker.js --no-dashboard --linger-ms=0
     ffmpeg-render-pro benchmark
-    ffmpeg-render-pro benchmark --duration=30
+    ffmpeg-render-pro benchmark --duration=30 --workers=4
 `);
   }
 }

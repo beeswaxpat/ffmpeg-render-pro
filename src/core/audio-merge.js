@@ -28,6 +28,12 @@ function mergeAudio(options) {
     normalize = false,
   } = options;
 
+  for (const [name, val] of [['videoPath', videoPath], ['audioPath', audioPath], ['outputPath', outputPath]]) {
+    if (!val || typeof val !== 'string') {
+      return Promise.reject(new Error(`mergeAudio: ${name} is required and must be a string.`));
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const args = ['-y', '-i', videoPath];
 
@@ -35,6 +41,12 @@ function mergeAudio(options) {
       args.push('-stream_loop', '-1');
     }
     args.push('-i', audioPath);
+
+    // Explicit stream mapping: video from input 0, audio from input 1.
+    // Without -map, ffmpeg's default selection picks the "best" audio across
+    // ALL inputs, so a video that already has an audio track could keep its
+    // old audio and silently drop the new one.
+    args.push('-map', '0:v:0', '-map', '1:a:0');
 
     args.push('-c:v', 'copy');
 

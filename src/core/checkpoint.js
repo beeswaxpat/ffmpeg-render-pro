@@ -51,27 +51,23 @@ function loadCheckpoint(checkpointDir, targetFrame) {
   if (typeof targetFrame !== 'number' || isNaN(targetFrame) || targetFrame < 0) return null;
   if (!fs.existsSync(checkpointDir)) return null;
 
-  const files = fs.readdirSync(checkpointDir)
-    .filter(f => f.startsWith('checkpoint-') && f.endsWith('.json'))
-    .sort();
+  const candidates = fs.readdirSync(checkpointDir)
+    .map(f => {
+      const match = f.match(/^checkpoint-(\d+)\.json$/);
+      return match ? { frame: parseInt(match[1], 10), file: f } : null;
+    })
+    .filter(c => c && c.frame <= targetFrame)
+    .sort((a, b) => b.frame - a.frame);
 
-  let bestFile = null;
-  let bestFrame = -1;
-
-  for (const f of files) {
-    const match = f.match(/checkpoint-(\d+)\.json/);
-    if (!match) continue;
-    const frame = parseInt(match[1]);
-    if (frame <= targetFrame && frame > bestFrame) {
-      bestFrame = frame;
-      bestFile = f;
-    }
+  // A checkpoint truncated by a crash or full disk must not take the render
+  // down with it: skip unparseable files and fall back to the next-nearest
+  // checkpoint (or null, meaning fast-forward from frame 0).
+  for (const c of candidates) {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(checkpointDir, c.file), 'utf-8'));
+    } catch {}
   }
-
-  if (!bestFile) return null;
-
-  const filepath = path.join(checkpointDir, bestFile);
-  return JSON.parse(fs.readFileSync(filepath, 'utf-8'));
+  return null;
 }
 
 /**

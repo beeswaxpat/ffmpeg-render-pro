@@ -34,6 +34,11 @@ const HEVC_ENCODERS = [
 const CACHE_DIR = path.join(os.homedir(), '.ffmpeg-render-pro');
 const CACHE_FILE = path.join(CACHE_DIR, 'gpu-cache.json');
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// Bump when detection logic changes so upgraded installs re-probe instead of
+// trusting up to 7 days of results from the old logic. v2: 256x256 probe frame
+// (the 64x64 probe was below NVENC's minimum resolution and cached false
+// negatives on NVIDIA hardware).
+const CACHE_SCHEMA_VERSION = 2;
 
 // Maximum supported resolution (8K)
 const MAX_WIDTH = 7680;
@@ -42,8 +47,15 @@ const MAX_HEIGHT = 4320;
 /**
  * Check if ffmpeg is installed and available on PATH.
  * Returns { available: boolean, version: string|null, path: string|null }
+ *
+ * The result is memoized for the process lifetime: a render invokes this
+ * from renderParallel, detectGPU's cache validation, and the CLI banner,
+ * and each `ffmpeg -version` spawn costs 100-300ms on Windows. ffmpeg
+ * appearing or vanishing mid-process is not a case worth re-probing for.
  */
+let _ffmpegCheckCache = null;
 function checkFFmpeg() {
+  if (_ffmpegCheckCache !== null) return _ffmpegCheckCache;
   try {
     const result = spawnSync('ffmpeg', ['-version'], {
       encoding: 'utf-8',
@@ -51,11 +63,14 @@ function checkFFmpeg() {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     if (result.error) {
+      // Not cached: a missing ffmpeg could be installed while the process
+      // (e.g. a long-lived MCP server) is still running.
       return { available: false, version: null, path: null, error: 'ffmpeg not found on PATH. Install ffmpeg: https://ffmpeg.org/download.html' };
     }
     const versionMatch = (result.stdout || '').match(/ffmpeg version (\S+)/);
     const version = versionMatch ? versionMatch[1] : 'unknown';
-    return { available: true, version, path: 'ffmpeg', error: null };
+    _ffmpegCheckCache = { available: true, version, path: 'ffmpeg', error: null };
+    return _ffmpegCheckCache;
   } catch {
     return { available: false, version: null, path: null, error: 'ffmpeg not found on PATH. Install ffmpeg: https://ffmpeg.org/download.html' };
   }
@@ -96,11 +111,17 @@ function isEncoderListed(encoderName) {
 /**
  * Validate an encoder by running a 1-frame test encode.
  * This catches cases where the encoder is listed but the driver/hardware is missing.
+ *
+ * The probe frame is 256x256: hardware encoders enforce MINIMUM dimensions
+ * (H.264 NVENC rejects anything narrower than 145px with a bare "Invalid
+ * argument"), so a tiny probe frame reports healthy GPUs as unavailable and
+ * silently downgrades every render to CPU. 256x256 clears every known
+ * hardware minimum and still encodes in a few milliseconds.
  */
 function validateEncoder(encoderName) {
   try {
     const result = spawnSync('ffmpeg', [
-      '-f', 'lavfi', '-i', 'nullsrc=s=64x64:d=0.04',
+      '-f', 'lavfi', '-i', 'nullsrc=s=256x256:d=0.04',
       '-c:v', encoderName,
       '-f', 'null', os.platform() === 'win32' ? 'NUL' : '/dev/null',
     ], { encoding: 'utf-8', timeout: 10000, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -117,6 +138,7 @@ function loadCache() {
   try {
     if (!fs.existsSync(CACHE_FILE)) return null;
     const data = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf-8'));
+    if (data.cacheSchemaVersion !== CACHE_SCHEMA_VERSION) return null;
     const age = Date.now() - (data.timestamp || 0);
     if (age > CACHE_MAX_AGE_MS) return null;
     if (data.ffmpegVersion !== getFFmpegVersion()) return null;
@@ -136,6 +158,7 @@ function saveCache(result) {
       ...result,
       timestamp: Date.now(),
       ffmpegVersion: getFFmpegVersion(),
+      cacheSchemaVersion: CACHE_SCHEMA_VERSION,
     }, null, 2));
   } catch {}
 }

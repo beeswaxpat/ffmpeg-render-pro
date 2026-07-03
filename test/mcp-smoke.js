@@ -96,6 +96,36 @@ function main() {
       if (!infoText.includes('CPU cores')) throw new Error('system_info response missing CPU cores');
       console.log('PASS system_info (got system snapshot)');
 
+      // 5. New optional params are advertised in tool schemas
+      const renderTool = list.result.tools.find(t => t.name === 'render_video');
+      const renderProps = (renderTool.inputSchema && renderTool.inputSchema.properties) || {};
+      for (const p of ['max_workers', 'dashboard_port', 'linger_ms', 'dashboard', 'auto_open']) {
+        if (!renderProps[p]) throw new Error('render_video schema missing param: ' + p);
+      }
+      const gradeTool = list.result.tools.find(t => t.name === 'color_grade');
+      const gradeProps = (gradeTool.inputSchema && gradeTool.inputSchema.properties) || {};
+      for (const p of ['keep_audio', 'crf']) {
+        if (!gradeProps[p]) throw new Error('color_grade schema missing param: ' + p);
+      }
+      console.log('PASS tool-schemas (new optional params advertised)');
+
+      // 6. color_grade with a missing input file returns a structured error
+      mcp.stdin.write(request(6, 'tools/call', { name: 'color_grade', arguments: {
+        input_path: 'Z:/definitely/not/a/real/file-' + Date.now() + '.mp4',
+        output_path: 'out.mp4',
+        preset: 'noir',
+      } }));
+      const gradeErr = await waitFor(6, 15000);
+      if (!gradeErr.result || !gradeErr.result.isError) throw new Error('color_grade should return isError for a missing input');
+      console.log('PASS color_grade (missing input -> structured error)');
+
+      // 7. detect_gpu force cpu mode
+      mcp.stdin.write(request(7, 'tools/call', { name: 'detect_gpu', arguments: { force_mode: 'cpu' } }));
+      const cpuMode = await waitFor(7, 15000);
+      const cpuText = cpuMode.result.content.map(c => c.text).join('\n');
+      if (!cpuText.includes('libx264')) throw new Error('detect_gpu cpu mode should report libx264');
+      console.log('PASS detect_gpu (force cpu -> libx264)');
+
       // Version should match package.json
       const pkgVersion = require('../package.json').version;
       if (serverVersion !== pkgVersion) {

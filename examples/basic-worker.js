@@ -10,7 +10,6 @@
  */
 const { workerData, parentPort } = require('worker_threads');
 const { spawn } = require('child_process');
-const path = require('path');
 
 const {
   width, height, fps, seed,
@@ -77,7 +76,12 @@ function blend(bgR, bgG, bgB, fgR, fgG, fgB, alpha) {
 }
 
 // --- Frame renderer ---
-function renderFrame(frameNum, buffer) {
+// `px32` is a Uint32Array view over the same memory as `buffer`. Each element
+// is one BGRA pixel (little-endian: B | G<<8 | R<<16 | A<<24), so the solid
+// background bars and progress bar are painted with native Uint32Array.fill
+// span writes: one fill per (row, bar) span instead of 4 byte writes per
+// pixel. On 1080p this cuts frame generation time roughly in half.
+function renderFrame(frameNum, buffer, px32) {
   const t = frameNum / fps; // time in seconds
   const progress = frameNum / totalFrames;
 
@@ -86,33 +90,25 @@ function renderFrame(frameNum, buffer) {
   const numBars = Math.ceil(width / barWidth) + 1;
   const hueShift = t * 30; // slow rotation
 
-  // Precompute per-bar × per-row colors ONCE, not per pixel.
-  // (numBars * height) hslToRgb calls instead of (width * height) - 20-40× less
-  // work on 1080p+, a ~25% frame-rendering speedup.
-  const barColorsBGR = new Uint8ClampedArray(numBars * height * 3);
+  // Per-bar values that don't change down a column (the sin term was
+  // previously recomputed for every row of every bar).
+  const barHues = new Float64Array(numBars);
+  const barSins = new Float64Array(numBars);
   for (let b = 0; b < numBars; b++) {
-    const barHue = (b * 9 + hueShift) % 360;
-    for (let y = 0; y < height; y++) {
-      const yNorm = y / height;
-      const lightness = 0.08 + yNorm * 0.15 + Math.sin(t * 2 + b * 0.3) * 0.05;
-      const [r, g, bl] = hslToRgb(barHue, 0.7, lightness);
-      const ci = (b * height + y) * 3;
-      barColorsBGR[ci]     = bl;
-      barColorsBGR[ci + 1] = g;
-      barColorsBGR[ci + 2] = r;
-    }
+    barHues[b] = (b * 9 + hueShift) % 360;
+    barSins[b] = Math.sin(t * 2 + b * 0.3) * 0.05;
   }
 
   for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const idx = (y * width + x) * 4;
-      const barIndex = Math.floor(x / barWidth);
-      const ci = (barIndex * height + y) * 3;
-      // BGRA format
-      buffer[idx]     = barColorsBGR[ci];
-      buffer[idx + 1] = barColorsBGR[ci + 1];
-      buffer[idx + 2] = barColorsBGR[ci + 2];
-      buffer[idx + 3] = 255;
+    const yNorm = y / height;
+    const rowStart = y * width;
+    for (let b = 0; b < numBars; b++) {
+      const xStart = b * barWidth;
+      if (xStart >= width) break;
+      const lightness = 0.08 + yNorm * 0.15 + barSins[b];
+      const [r, g, bl] = hslToRgb(barHues[b], 0.7, lightness);
+      const color = (0xFF000000 | (r << 16) | (g << 8) | bl) >>> 0;
+      px32.fill(color, rowStart + xStart, rowStart + Math.min(xStart + barWidth, width));
     }
   }
 
@@ -156,20 +152,16 @@ function renderFrame(frameNum, buffer) {
     }
   }
 
-  // Progress bar at bottom
+  // Progress bar at bottom (span fills: cyan for done, dark for remaining)
   const barH = 4;
   const barY = height - barH;
   const barFillW = Math.round(progress * width);
+  const CYAN = (0xFF000000 | (0 << 16) | (255 << 8) | 255) >>> 0;
+  const DARK = (0xFF000000 | (30 << 16) | (30 << 8) | 30) >>> 0;
   for (let y = barY; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const idx = (y * width + x) * 4;
-      if (x < barFillW) {
-        buffer[idx] = 255; buffer[idx + 1] = 255; buffer[idx + 2] = 0; // cyan in BGRA
-      } else {
-        buffer[idx] = 30; buffer[idx + 1] = 30; buffer[idx + 2] = 30;
-      }
-      buffer[idx + 3] = 255;
-    }
+    const rowStart = y * width;
+    px32.fill(CYAN, rowStart, rowStart + barFillW);
+    px32.fill(DARK, rowStart + barFillW, rowStart + width);
   }
 }
 
@@ -177,6 +169,9 @@ function renderFrame(frameNum, buffer) {
 async function main() {
   const frameSize = width * height * 4; // BGRA
   const buffer = Buffer.alloc(frameSize);
+  // One u32 per pixel over the same memory (Buffer.alloc is non-pooled, so
+  // byteOffset is 0 and the view is always 4-byte aligned).
+  const px32 = new Uint32Array(buffer.buffer, buffer.byteOffset, width * height);
 
   // Fast-forward particle state to startFrame (update-only, no render)
   if (startFrame > 0) {
@@ -196,7 +191,12 @@ async function main() {
     }
   }
 
-  // Spawn ffmpeg encoder
+  // Spawn ffmpeg encoder. Callers can override the encoder args by passing
+  // workerData: { codecArgs: ['-c:v', ..., ...] } to renderParallel; the
+  // default matches the parallel-segment recipe (CPU x264, fast, crf 20).
+  const codecArgs = Array.isArray(workerData.codecArgs) && workerData.codecArgs.length > 0
+    ? workerData.codecArgs
+    : ['-c:v', 'libx264', '-preset', 'fast', '-crf', '20'];
   const ffmpeg = spawn('ffmpeg', [
     '-y',
     '-f', 'rawvideo',
@@ -204,9 +204,7 @@ async function main() {
     '-video_size', `${width}x${height}`,
     '-framerate', String(fps),
     '-i', 'pipe:0',
-    '-c:v', 'libx264',
-    '-preset', 'fast',
-    '-crf', '20',
+    ...codecArgs,
     '-pix_fmt', 'yuv420p',
     '-movflags', '+faststart',
     segmentPath,
@@ -226,7 +224,7 @@ async function main() {
   const startTime = Date.now();
 
   for (let f = startFrame; f < endFrame; f++) {
-    renderFrame(f, buffer);
+    renderFrame(f, buffer, px32);
 
     // Write with backpressure
     const ok = ffmpeg.stdin.write(buffer);

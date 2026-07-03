@@ -50,6 +50,7 @@ server.registerTool(
     inputSchema: {
       force_mode: z.enum(['auto', 'cpu', 'gpu']).default('auto').describe('Force CPU-only, GPU-only, or auto-detect'),
     },
+    annotations: { readOnlyHint: true },
   },
   async ({ force_mode }) => {
     try {
@@ -87,6 +88,7 @@ server.registerTool(
       width: z.number().default(1920).describe('Target render width for worker calculation'),
       height: z.number().default(1080).describe('Target render height for worker calculation'),
     },
+    annotations: { readOnlyHint: true },
   },
   async ({ width, height }) => {
     try {
@@ -135,9 +137,12 @@ server.registerTool(
       title: z.string().default('Render').describe('Title shown in dashboard'),
       dashboard: z.boolean().default(true).describe('Serve the live HTML dashboard'),
       auto_open: z.boolean().default(true).describe('Auto-open the dashboard in a browser (set false for headless/server use)'),
+      max_workers: z.number().optional().describe('Cap for the auto-detected worker count (ignored when workers is set)'),
+      dashboard_port: z.number().optional().describe('Dashboard starting port (default 8080, increments if occupied)'),
+      linger_ms: z.number().optional().describe('How long the dashboard stays up after completion in ms (default 30000, 0 = stop immediately)'),
     },
   },
-  async ({ worker_script, output_path, width, height, fps, duration, workers, seed, title, dashboard, auto_open }) => {
+  async ({ worker_script, output_path, width, height, fps, duration, workers, seed, title, dashboard, auto_open, max_workers, dashboard_port, linger_ms }) => {
     try {
       validateResolution(width, height);
 
@@ -153,10 +158,13 @@ server.registerTool(
         outputPath: resolvedOutput,
         width, height, fps, duration,
         workerCount: workers,
+        maxWorkers: max_workers,
         seed,
         title,
         dashboard,
         autoOpen: auto_open,
+        dashboardPort: dashboard_port,
+        dashboardLingerMs: linger_ms,
       });
 
       const avgFps = (result.totalFrames / result.elapsed).toFixed(1);
@@ -187,9 +195,11 @@ server.registerTool(
       preset: z.enum(['noir', 'warm', 'cool', 'cinematic', 'vintage']).optional().describe('Built-in color grade preset'),
       filter: z.string().optional().describe('Custom ffmpeg -vf filter string (overrides preset)'),
       codec: z.string().default('libx264').describe('Encoder for output'),
+      crf: z.number().optional().describe('CRF/CQ quality (default 18, lower = higher quality)'),
+      keep_audio: z.boolean().default(false).describe('Stream-copy the input audio track instead of stripping it'),
     },
   },
-  async ({ input_path, output_path, preset, filter, codec }) => {
+  async ({ input_path, output_path, preset, filter, codec, crf, keep_audio }) => {
     try {
       if (!preset && !filter) {
         return { content: [{ type: 'text', text: `Error: Provide either a preset (${Object.keys(PRESETS).join(', ')}) or a custom filter string.` }], isError: true };
@@ -208,6 +218,9 @@ server.registerTool(
         preset,
         filter,
         codec,
+        crf,
+        cq: crf,
+        keepAudio: keep_audio,
       });
 
       const text = [
@@ -216,6 +229,7 @@ server.registerTool(
         `  Output: ${resolvedOutput}`,
         `  ${preset ? `Preset: ${preset}` : `Filter: ${filter}`}`,
         `  Codec:  ${codec}`,
+        `  Audio:  ${keep_audio ? 'kept (stream copy)' : 'stripped'}`,
       ].join('\n');
 
       return { content: [{ type: 'text', text }] };

@@ -29,12 +29,18 @@ class ProgressTracker extends EventEmitter {
 
     this._dashboardInterval = null;
     this._previewDir = path.join(this.outputDir, 'preview');
+    // JSON files and the terminal ticker only exist after start(). Guarding on
+    // this keeps a dashboard-less render from writing preview files it never
+    // serves, and from cursor-up redrawing bars that were never drawn (which
+    // overwrote unrelated console output in library use).
+    this._started = false;
   }
 
   /**
    * Start the progress tracker (terminal + JSON output).
    */
   start() {
+    this._started = true;
     if (!fs.existsSync(this._previewDir)) {
       fs.mkdirSync(this._previewDir, { recursive: true });
     }
@@ -93,8 +99,10 @@ class ProgressTracker extends EventEmitter {
       clearInterval(this._dashboardInterval);
       this._dashboardInterval = null;
     }
-    this._drawTerminal();
-    this._writeGlobalJSON();
+    if (this._started) {
+      this._drawTerminal();
+      this._writeGlobalJSON();
+    }
   }
 
   /**
@@ -114,6 +122,7 @@ class ProgressTracker extends EventEmitter {
   // --- Private ---
 
   _writeGlobalJSON() {
+    if (!this._started) return;
     try {
       fs.writeFileSync(path.join(this._previewDir, 'global.json'), JSON.stringify({
         startTime: this.startTime,
@@ -129,6 +138,7 @@ class ProgressTracker extends EventEmitter {
   }
 
   _writeWorkerJSON(workerId) {
+    if (!this._started) return;
     try {
       const w = this.workers[workerId];
       fs.writeFileSync(path.join(this._previewDir, `worker-${workerId}.json`), JSON.stringify({

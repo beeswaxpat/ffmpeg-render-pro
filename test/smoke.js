@@ -141,7 +141,56 @@ async function main() {
     fs.rmSync(emptyDir, { recursive: true, force: true });
     assert.strictEqual(result, null);
   });
+  test('loadCheckpoint skips a corrupted checkpoint and falls back to an older one', () => {
+    // frame 800 is truncated garbage; frame 500 (saved above) is valid
+    fs.writeFileSync(path.join(cpDir, 'checkpoint-00000800.json'), '{"_frame":800,"camera":{"x"');
+    const result = lib.loadCheckpoint(cpDir, 999);
+    assert.ok(result, 'fell back to a valid checkpoint');
+    assert.strictEqual(result._frame, 500);
+  });
+  test('loadCheckpoint returns null when every checkpoint is corrupt', () => {
+    const corruptDir = path.join(os.tmpdir(), 'ffmpeg-render-pro-cp-corrupt-' + Date.now());
+    fs.mkdirSync(corruptDir, { recursive: true });
+    fs.writeFileSync(path.join(corruptDir, 'checkpoint-00000100.json'), 'not json');
+    const result = lib.loadCheckpoint(corruptDir, 999);
+    fs.rmSync(corruptDir, { recursive: true, force: true });
+    assert.strictEqual(result, null);
+  });
   try { fs.rmSync(cpDir, { recursive: true, force: true }); } catch {}
+
+  // --- mergeAudio / colorGrade input validation (fails before spawning ffmpeg) ---
+  await test('mergeAudio rejects missing videoPath', async () => {
+    await assert.rejects(() => lib.mergeAudio({ audioPath: 'a.mp3', outputPath: 'o.mp4' }), /videoPath is required/);
+  });
+  await test('mergeAudio rejects non-string audioPath', async () => {
+    await assert.rejects(() => lib.mergeAudio({ videoPath: 'v.mp4', audioPath: 42, outputPath: 'o.mp4' }), /audioPath is required/);
+  });
+  await test('colorGrade rejects missing inputPath', async () => {
+    await assert.rejects(() => lib.colorGrade({ outputPath: 'o.mp4', preset: 'noir' }), /inputPath is required/);
+  });
+  await test('colorGrade still rejects when no filter or preset given', async () => {
+    await assert.rejects(() => lib.colorGrade({ inputPath: 'i.mp4', outputPath: 'o.mp4' }), /No filter provided/);
+  });
+
+  // --- Backward-compat guard: every 1.3.x export must still exist ---
+  test('all v1.3.x exports are still present', () => {
+    const expected = [
+      'renderParallel', 'createEncoder',
+      'detectGPU', 'getCodecArgs', 'getFFmpegVersion', 'checkFFmpeg', 'validateResolution',
+      'getOptimalWorkers', 'getConfig', 'getResolutionTier',
+      'concatSegments', 'colorGrade', 'COLOR_PRESETS', 'mergeAudio',
+      'startDashboard', 'ProgressTracker',
+      'saveCheckpoint', 'loadCheckpoint', 'restoreCheckpoint', 'generateCheckpoints', 'listCheckpoints', 'CHECKPOINT_INTERVAL',
+    ];
+    for (const name of expected) {
+      assert.ok(name in lib, `missing export: ${name}`);
+    }
+  });
+
+  test('planWorkers 0 frames clamps to 1 worker', () => {
+    const { planWorkers: pw } = require('../src/core/config.js');
+    assert.strictEqual(pw(0, 8).workers, 1);
+  });
 
   // --- renderParallel input validation (without actually rendering) ---
   await test('renderParallel rejects invalid fps', async () => {

@@ -218,9 +218,12 @@ function startDashboard(options) {
           'Access-Control-Allow-Origin': origin,
         };
 
-        // No cache for JSON (progress data)
+        // No cache for JSON (progress data). HTML revalidates so a package
+        // update's new dashboard isn't shadowed by a stale browser cache.
         if (ext === '.json') {
           headers['Cache-Control'] = 'no-store';
+        } else if (ext === '.html') {
+          headers['Cache-Control'] = 'no-cache';
         }
 
         res.writeHead(200, headers);

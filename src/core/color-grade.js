@@ -46,6 +46,7 @@ const PRESETS = {
  * @param {string} [options.codec='libx264'] - Encoder for output
  * @param {number} [options.crf=18] - CRF quality
  * @param {string} [options.encoderPreset='medium'] - Encoder speed preset
+ * @param {boolean} [options.keepAudio=false] - Stream-copy the input's audio track instead of stripping it
  * @returns {Promise<void>}
  */
 function colorGrade(options) {
@@ -57,7 +58,14 @@ function colorGrade(options) {
     crf = 18,
     cq = 18,
     encoderPreset = 'medium',
+    keepAudio = false,
   } = options;
+
+  for (const [name, val] of [['inputPath', inputPath], ['outputPath', outputPath]]) {
+    if (!val || typeof val !== 'string') {
+      return Promise.reject(new Error(`colorGrade: ${name} is required and must be a string.`));
+    }
+  }
 
   const filterChain = filter || PRESETS[preset];
   if (!filterChain) {
@@ -76,7 +84,10 @@ function colorGrade(options) {
       ...codecArgs,
       '-pix_fmt', 'yuv420p',
       '-movflags', '+faststart',
-      '-an',
+      // Default strips audio (the historical behavior); keepAudio stream-copies
+      // it so a graded final cut doesn't lose its soundtrack. `0:a?` makes the
+      // audio map optional, so silent inputs still grade cleanly.
+      ...(keepAudio ? ['-map', '0:v:0', '-map', '0:a?', '-c:a', 'copy'] : ['-an']),
       outputPath,
     ];
 

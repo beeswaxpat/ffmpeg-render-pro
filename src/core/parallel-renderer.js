@@ -20,11 +20,39 @@
 const { Worker } = require('worker_threads');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { concatSegments } = require('./concat');
 const { getOptimalWorkers, planWorkers } = require('./config');
 const { ProgressTracker } = require('./progress');
 const { startDashboard } = require('./dashboard-server');
 const { checkFFmpeg, validateResolution } = require('./gpu-detect');
+
+const STALE_TEMP_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Remove leftover `.parallel-temp*` dirs from renders that were hard-killed
+ * (no cleanup ran). A dir is only swept when its newest entry is over a day
+ * old, so a concurrent render's still-encoding segments are never touched.
+ */
+function sweepStaleTempDirs(outputDir) {
+  let entries;
+  try { entries = fs.readdirSync(outputDir); } catch { return; }
+  for (const name of entries) {
+    if (!/^\.parallel-temp(-[0-9a-f]+)?$/.test(name)) continue;
+    const dir = path.join(outputDir, name);
+    try {
+      if (!fs.statSync(dir).isDirectory()) continue;
+      let newest = fs.statSync(dir).mtimeMs;
+      for (const f of fs.readdirSync(dir)) {
+        const m = fs.statSync(path.join(dir, f)).mtimeMs;
+        if (m > newest) newest = m;
+      }
+      if (Date.now() - newest > STALE_TEMP_AGE_MS) {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    } catch {}
+  }
+}
 
 /**
  * Render a video using parallel workers.
@@ -45,7 +73,7 @@ const { checkFFmpeg, validateResolution } = require('./gpu-detect');
  * @param {number} [options.dashboardPort=8080] - Dashboard starting port
  * @param {number} [options.maxWorkers=8] - Cap for auto worker count (ignored when workerCount is set)
  * @param {number} [options.dashboardLingerMs=30000] - How long to keep the dashboard alive after completion. Pass 0 to return immediately (library use).
- * @returns {Promise<{ outputPath: string, elapsed: number, totalFrames: number }>}
+ * @returns {Promise<{ outputPath: string, elapsed: number, totalFrames: number, avgFps: number }>}
  */
 async function renderParallel(options) {
   const {
@@ -116,8 +144,11 @@ async function renderParallel(options) {
   const outputDir = path.dirname(path.resolve(outputPath));
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
-  // Temp directory for segments
-  const tempDir = path.join(outputDir, '.parallel-temp');
+  // Temp directory for segments. The name carries a random suffix so two
+  // renders targeting the same output directory can't overwrite each other's
+  // segments or delete each other's temp dir during cleanup.
+  sweepStaleTempDirs(outputDir);
+  const tempDir = path.join(outputDir, `.parallel-temp-${crypto.randomBytes(4).toString('hex')}`);
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
   console.log('');
@@ -310,7 +341,7 @@ async function renderParallel(options) {
     }
 
     removeSignalHandlers();
-    return { outputPath, elapsed, totalFrames };
+    return { outputPath, elapsed, totalFrames, avgFps: elapsed > 0 ? totalFrames / elapsed : 0 };
 
   } catch (err) {
     cleanup();

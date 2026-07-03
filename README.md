@@ -48,17 +48,18 @@ Built by [Beeswax Pat](https://github.com/beeswaxpat) · Free and open source fo
 - **MCP server**: Model Context Protocol server with 6 tools, works with Claude Code, Claude Desktop, and any MCP client
 - **Cross-platform**: Windows, macOS, Linux. Any GPU or CPU-only. Requires Node.js >= 18 plus ffmpeg.
 
-## What's new in v1.3.0
+## What's new in v1.4.0
 
-An Opus 4.8 review pass. Fully backward-compatible, no worker scripts or MCP integrations need changes.
+A Claude Fable 5 review pass. Fully backward-compatible: every CLI command, API signature, MCP tool name, and worker contract from 1.3.x works unchanged.
 
-- Accurate worker count on small renders (no more idle "phantom" worker cards)
-- Even-dimension guard with a clear error up front (`yuv420p` needs even width and height)
-- `dashboardLingerMs` option so library calls can return immediately instead of holding the process open for 30s
-- `concatSegments` validates that every segment exists and is non-empty before joining
-- New `maxWorkers` / `--max-workers`, a `version` command, and full HEVC codec-arg coverage
-- MCP `render_video` gains `dashboard` / `auto_open` flags for headless use
-- `npm test` now runs the smoke suite and the MCP handshake; 39 to 49 tests
+- **GPU detection fixed on modern ffmpeg.** The validation probe frame was below NVENC's minimum resolution, so NVIDIA systems silently fell back to CPU encoding. If `detect-gpu` told you "NO (CPU fallback)" and you have a GPU, run it again on 1.4.0.
+- **Example worker frame generation is 3.1x faster** (13.1ms to 4.2ms per 1080p frame), with byte-identical output.
+- Concurrent renders into the same output directory no longer collide on temp files
+- `mergeAudio` always keeps the NEW audio track, even when the video already had one
+- New CLI flags: `--no-dashboard`, `--no-open`, `--port`, `--linger-ms`; `--seed=0` and fractional `--duration` now work
+- `colorGrade` can keep the soundtrack (`keepAudio: true` / MCP `keep_audio`)
+- New optional MCP params: `max_workers`, `dashboard_port`, `linger_ms`, `crf`, `keep_audio`
+- New end-to-end suite renders real videos and verifies them with ffprobe + framemd5; 49 tests grew to 81
 
 See [CHANGELOG.md](CHANGELOG.md) for the complete list.
 
@@ -108,6 +109,8 @@ ffmpeg-render-pro benchmark           # Quick 5s test render
 ffmpeg-render-pro version             # Print the installed version
 ```
 
+Dashboard control flags for `render` and `benchmark`: `--no-dashboard` (disable entirely), `--no-open` (serve but don't open a browser), `--port=8080`, and `--linger-ms=30000` (how long the dashboard stays up after completion; `0` exits immediately). Run `ffmpeg-render-pro` with no arguments for the full flag reference.
+
 ## API
 
 ```js
@@ -144,7 +147,7 @@ await renderParallel({
 });
 ```
 
-Width and height must be even (the pipeline encodes `yuv420p`). For library use, set `dashboardLingerMs: 0` so the call resolves without holding the process open. `renderParallel` resolves with `{ outputPath, elapsed, totalFrames }`. Set `FFMPEG_RENDER_PRO_DEBUG=1` in the environment for full stack traces on error.
+Width and height must be even (the pipeline encodes `yuv420p`). For library use, set `dashboardLingerMs: 0` so the call resolves without holding the process open. `renderParallel` resolves with `{ outputPath, elapsed, totalFrames, avgFps }`. Set `FFMPEG_RENDER_PRO_DEBUG=1` in the environment for full stack traces on error.
 
 ### Writing a Worker
 
@@ -212,6 +215,9 @@ await colorGrade({ inputPath: 'raw.mp4', outputPath: 'graded.mp4', preset: 'cine
 // ...or a custom ffmpeg -vf filter chain
 await colorGrade({ inputPath: 'raw.mp4', outputPath: 'graded.mp4', filter: 'eq=contrast=1.08:saturation=0.9', crf: 18 });
 
+// Keep the soundtrack through the grade (default strips audio)
+await colorGrade({ inputPath: 'final.mp4', outputPath: 'graded.mp4', preset: 'noir', keepAudio: true });
+
 // Merge audio: video is stream-copied, audio encoded to AAC. loop + loudnorm are optional.
 await mergeAudio({ videoPath: 'graded.mp4', audioPath: 'track.mp3', outputPath: 'final.mp4', bitrate: 320, loop: true, normalize: true });
 
@@ -267,12 +273,13 @@ node examples/render-test.js --duration=60 --width=1080 --height=1920
 ## Tests
 
 ```bash
-npm test          # smoke suite + MCP stdio handshake
+npm test           # smoke suite + MCP stdio handshake + end-to-end renders
 npm run test:smoke # smoke suite only
 npm run test:mcp   # MCP server handshake only
+npm run test:e2e   # real renders verified with ffprobe + framemd5
 ```
 
-A zero-dependency suite covering module exports, input validation (including odd-dimension and worker-count math), dashboard path-safety (traversal + null-byte + double-encoding vectors), checkpoint round-trip, and the MCP server stdio handshake. `npm test` runs both the smoke suite and the MCP server test.
+A zero-dependency suite (81 tests) covering module exports, input validation (including odd-dimension and worker-count math), dashboard path-safety (traversal + null-byte + double-encoding vectors), checkpoint round-trip and corruption fallback, and the MCP server stdio handshake. The e2e suite renders real videos and checks codec, dimensions, exact frame counts, same-seed determinism (`framemd5`), concat, color grades, and audio merges; it skips itself cleanly on machines without ffmpeg.
 
 ## MCP Server
 
@@ -326,7 +333,7 @@ Or, if you prefer not to install globally:
 | `merge_audio` | Combine video + audio with loudness normalization |
 | `concat_videos` | Stream-copy join multiple videos (instant, no re-encode) |
 
-Each tool's full input schema (parameter names, types, defaults) is advertised by the server at runtime via the MCP `tools/list` method, so an agent can introspect it directly. `render_video` also accepts `dashboard` and `auto_open` booleans for headless use.
+Each tool's full input schema (parameter names, types, defaults) is advertised by the server at runtime via the MCP `tools/list` method, so an agent can introspect it directly. `render_video` also accepts `dashboard`, `auto_open`, `max_workers`, `dashboard_port`, and `linger_ms` for headless or tuned use; `color_grade` accepts `crf` and `keep_audio`.
 
 ## Claude Code Skill
 

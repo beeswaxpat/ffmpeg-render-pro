@@ -41,7 +41,7 @@ node bin/ffmpeg-render-pro.js detect-gpu --gpu
 1. **Pre-scale BEFORE heavy processing** - Never run expensive filters (minterpolate, color grading) on source resolution. Downscale to target resolution FIRST.
 2. **Parallel rendering when possible** - 8-worker parallel pipeline with segment concat for procedural video. Single process for minterpolate (segment overhead dominates).
 3. **GPU encoding when available** - Use `detectGPU()` to auto-detect. Use `--cpu` flag to force software encoding if GPU causes issues. Use `--gpu` flag to require hardware encoding.
-4. **Live render dashboard REQUIRED** - The dashboard auto-opens in the browser before rendering starts. Every render gets a live progress view.
+4. **Live render dashboard REQUIRED** - The dashboard auto-opens in the browser before rendering starts. Every render gets a live progress view. (Headless/CI runs can opt out with `--no-dashboard` or `--no-open`, and `--linger-ms=0` exits immediately after completion.)
 5. **One render at a time** - Sequential is faster than competing for cores.
 6. **`-movflags +faststart` on EVERYTHING** - Required for YouTube uploads and streaming.
 
@@ -141,6 +141,8 @@ See `examples/basic-worker.js` for a complete, working template.
 ```js
 await colorGrade({ inputPath: 'raw.mp4', outputPath: 'graded.mp4', preset: 'noir' });
 // Available: noir, warm, cool, cinematic, vintage
+// Grading a final cut that already has audio? Pass keepAudio: true
+// (default strips audio, which is right for pre-merge pipeline order)
 ```
 
 ### Custom Filter
@@ -235,7 +237,7 @@ node examples/render-test.js --width=1080 --height=1920 --fps=30 --duration=60
 
 ## Safety & Cross-Platform Notes
 
-- **No external dependencies** - Zero npm packages needed. Only Node.js + ffmpeg.
+- **Zero-dependency core** - The render pipeline needs only Node.js + ffmpeg (the optional MCP server uses the official MCP SDK).
 - **No network calls** - Dashboard is localhost-only. No telemetry, no phone-home.
 - **No CDN loads** - Dashboard uses system fonts, no external resources.
 - **Path handling** - All paths use `path.join()` for cross-platform safety.
