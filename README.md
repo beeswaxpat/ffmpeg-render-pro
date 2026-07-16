@@ -48,7 +48,7 @@ Built by [Beeswax Pat](https://github.com/beeswaxpat) · Free and open source fo
 - **MCP server**: Model Context Protocol server with 7 tools, works with Claude Code, Claude Desktop, and any MCP client
 - **Cross-platform**: Windows, macOS, Linux. Any GPU or CPU-only. Requires Node.js >= 18 plus ffmpeg.
 
-## What's new in v1.5.0
+## What's New in v1.5.0
 
 A reliability and agent-integration pass. Fully backward-compatible: every CLI command, API signature, MCP tool name, worker contract, and checkpoint file format from 1.4.x works unchanged.
 
@@ -69,9 +69,9 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete list.
 - **Node.js** >= 18
 - **ffmpeg** installed and on PATH (or pointed to via env var, below)
 
-### Using ffmpeg that is not on PATH
+### Using ffmpeg That Is Not on PATH
 
-Every ffmpeg and ffprobe spawn resolves its binary at call time from two env vars:
+ffmpeg and ffprobe binaries are resolved at call time from two env vars (one exception: the best-effort post-render output check, noted below):
 
 ```bash
 # Full path to the ffmpeg executable (used by every render, grade, merge, concat, probe)
@@ -181,19 +181,19 @@ await renderParallel({
 });
 ```
 
-Width and height must be even (the pipeline encodes `yuv420p`). For library use, set `dashboardLingerMs: 0` so the call resolves without holding the process open. `renderParallel` resolves with `{ outputPath, elapsed, totalFrames, avgFps }`. Set `FFMPEG_RENDER_PRO_DEBUG=1` in the environment for full stack traces on error.
+Width and height must be even (the pipeline encodes `yuv420p`). For library use, set `dashboardLingerMs: 0` so the call resolves without holding the process open. `renderParallel` resolves with `{ outputPath, elapsed, totalFrames, avgFps }`. Set `FFMPEG_RENDER_PRO_DEBUG=1` in the environment for full stack traces from the CLI on error (library rejections carry the stack either way).
 
 Reliability behavior baked into every render:
 
 - **Abort**: pass an `AbortSignal` as `signal`. Calling `abort()` stops all workers, removes temp files, and rejects the promise with an error whose `name` is `'AbortError'`.
 - **Quiet mode**: `quiet: true` routes all status lines to stderr and disables the terminal progress ticker, so stdout stays byte-clean for protocol use (this is how the MCP server runs). Dashboard JSON files are still written.
 - **One-shot retry**: a failed worker's frame range is respawned once (to a fresh segment path) before the render is failed; a stderr warning names the worker and attempt.
-- **Output verification**: after concat, one cheap ffprobe metadata read warns on stderr if the output is shorter than requested. It never fails the render and is silent when ffprobe is missing.
+- **Output verification**: after concat, one cheap ffprobe metadata read warns on stderr if the output is shorter than requested. It never fails the render and is silent when ffprobe is missing. This best-effort check looks for ffprobe on PATH only; it is the one spawn that does not consult `FFMPEG_RENDER_PRO_FFPROBE`.
 - **Failure surfaces live**: on error the dashboard shows a red RENDER FAILED banner (and the browser tab title flips to FAILED) instead of freezing at the last good state.
 
 The `workerCount` option is a request, not a guarantee: the renderer never spawns more workers than there are frames, so short renders may use fewer. Auto-detection caps at `maxWorkers` (default 8), free RAM, and CPU cores minus 2.
 
-### Encoder helpers
+### Encoder Helpers
 
 `getCodecArgs(encoder, { crf, cq, preset })` returns the full production arg array for any of the 11 supported encoders (libx264, NVENC, VideoToolbox, AMF, VA-API, QSV in H.264 and HEVC variants). For VA-API that array includes device init and a `-vf format=nv12,hwupload` pair, because the encoder cannot run without them.
 
@@ -300,9 +300,9 @@ See `examples/basic-worker.js` for the complete hardened reference worker (its d
 
 Each worker writes its frame range to `segmentPath`; the renderer stream-copy concats the segments in order.
 
-## Post-processing API
+## Post-Processing API
 
-Use these directly, or via the CLI and MCP tools. Video is stream-copied where possible, so there is no quality loss.
+Use these directly, or via the MCP tools (`color_grade`, `merge_audio`, `concat_videos`). Video is stream-copied where possible, so there is no quality loss.
 
 ```js
 const { colorGrade, mergeAudio, concatSegments } = require('ffmpeg-render-pro');
@@ -328,7 +328,7 @@ await concatSegments(['part-000.mp4', 'part-001.mp4'], 'joined.mp4', { validate:
 
 By default `concatSegments` probes every input with ffprobe (one spawn per segment) and rejects codec, resolution, framerate, or pixel-format mismatches before ffmpeg runs, because ffmpeg itself accepts mismatched inputs and writes a silently corrupt file. Pass `{ validate: false }` to skip the probes. When ffprobe is not installed the check is skipped with a stderr warning; missing and zero-byte segments are always rejected.
 
-## Checkpoints (long renders)
+## Checkpoints (Long Renders)
 
 For multi-hour renders, pre-generate state snapshots so each worker replays only the frames since the nearest checkpoint instead of from frame 0.
 
@@ -458,15 +458,15 @@ Behavior worth knowing when wiring an agent:
 - **Progress notifications**: when the client sends a `progressToken`, `render_video` emits `notifications/progress` every 2 seconds plus start and end frames. Clients should enable `resetTimeoutOnProgress` so long renders do not hit request timeouts.
 - **Cancellation**: client-side cancellation aborts the render cleanly; workers stop and temp files are removed.
 - **fps default**: `render_video` defaults to 30 fps; the CLI `render` command defaults to 60.
-- **GPU probe caching**: `detect_gpu` and `system_info` cache probe results for 7 days in `~/.ffmpeg-render-pro` (override the directory with `FFMPEG_RENDER_PRO_CACHE_DIR`).
+- **GPU probe caching**: probe results are cached for 7 days in `~/.ffmpeg-render-pro` (override the directory with `FFMPEG_RENDER_PRO_CACHE_DIR`). `detect_gpu` re-probes on every call and refreshes the cache; `system_info` reads the cached result.
 - **Protocol hygiene**: stdout carries only JSON-RPC frames; all library and console output is routed to stderr, and renders run in quiet mode automatically.
-- **Missing ffmpeg**: every tool returns an actionable error naming the install page and the `FFMPEG_RENDER_PRO_FFMPEG` env var instead of a raw spawn error.
+- **Missing ffmpeg**: every tool that needs ffmpeg returns an actionable error naming the install page and the `FFMPEG_RENDER_PRO_FFMPEG` env var instead of a raw spawn error (`get_worker_template` works without ffmpeg).
 
 ## For AI Agents
 
 Wire the server in with the `claude mcp add` one-liners or the Claude Desktop JSON above. Then the working recipe is:
 
-1. `detect_gpu` to confirm hardware acceleration (optional but cheap; cached 7 days).
+1. `detect_gpu` to confirm hardware acceleration (optional; each call re-probes and refreshes the 7-day cache).
 2. `get_worker_template` to fetch the worker contract and the bundled reference worker. Its `templatePath` is directly usable as `worker_script` for a test scene, or write a custom worker against the returned contract.
 3. `render_video` with `dashboard: false` and `auto_open: false` for headless runs (stdout hygiene is automatic). Pass a `progressToken` for live progress.
 4. `color_grade` and/or `merge_audio` for post-processing.
@@ -496,7 +496,7 @@ Once installed, Claude Code will automatically use the skill when you ask it to 
 - **Dashboard server binds to `127.0.0.1` only.** It is never reachable from other machines on your network.
 - **No telemetry, no phone-home, no CDN loads.** Dashboard runs entirely from local files using system fonts.
 - **MCP server is a local-filesystem tool.** When wired into an AI agent, it will render, read, and write files anywhere the current user has access. Treat it like any other filesystem-enabled tool: only run it with a trusted agent, and consider restricting the process's working directory if you use it with untrusted prompts.
-- **`render_video` executes the given worker script with the full privileges of the current user.** A worker script is arbitrary Node code running in a worker thread; only render scripts you wrote or trust. The same applies to `renderParallel` in library use.
+- **`render_video` executes the given worker script with the full privileges of the current user.** A worker script is arbitrary Node code running in a worker thread; only run worker scripts you wrote or trust. The same applies to `renderParallel` in library use.
 - **Custom filter strings are file access.** ffmpeg `-vf` filters can read local files through sources like `movie=` and `subtitles=`, so a custom `filter` passed to `color_grade`/`colorGrade` can reference files on disk. Treat filter input from untrusted agents or users the same way you would treat a file path.
 - **Stream-copy concat uses temp files under `os.tmpdir()`.** Output paths you pass are still written as-is, so make sure your output path is where you want it.
 

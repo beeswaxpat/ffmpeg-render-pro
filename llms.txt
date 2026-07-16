@@ -17,7 +17,7 @@ an MCP (Model Context Protocol) stdio server. Requires Node.js >= 18 and ffmpeg
 
 ## MCP tools (7)
 
-- detect_gpu: probe the best hardware video encoder on this machine (cached 7 days)
+- detect_gpu: probe the best hardware video encoder on this machine (each call re-probes and refreshes a 7-day cache that system_info reads)
 - system_info: CPU cores, RAM, recommended worker count for a resolution, ffmpeg version
 - render_video: parallel render from a worker script; progress notifications + cancellation
 - get_worker_template: the worker contract plus bundled reference worker source (templatePath is directly usable as worker_script)

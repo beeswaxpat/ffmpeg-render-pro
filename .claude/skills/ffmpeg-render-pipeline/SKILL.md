@@ -87,14 +87,14 @@ Each encoder is validated with a 1-frame test encode using its real production a
 
 Auto-detection takes the minimum of the RAM budget, CPU cores minus 2, and `maxWorkers` (default cap 8). `workerCount` is a request, not a guarantee: the renderer never spawns more workers than there are frames, so short renders use fewer (10 frames across 8 requested workers spawns 5).
 
-### CLI quality flags (render + benchmark)
+### CLI Quality Flags (render + benchmark)
 
 - `--crf=NN` - x264 quality, 0-51, lower is higher quality (default 20)
 - `--encoder-preset=NAME` - x264 speed preset: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow, placebo (default fast)
 
 Both flow to workers via `workerData.codecArgs`. Unknown flags warn on stderr and continue; unparseable numeric values (e.g. `--fps=abc`) exit 1.
 
-### Environment variables
+### Environment Variables
 
 - `FFMPEG_RENDER_PRO_FFMPEG` - full path to ffmpeg when it is not on PATH
 - `FFMPEG_RENDER_PRO_FFPROBE` - full path to ffprobe (auto-derived as the ffmpeg sibling when unset)
