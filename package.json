@@ -1,6 +1,6 @@
-{
+﻿{
   "name": "ffmpeg-render-pro",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Parallel video rendering with live dashboard, GPU auto-detection, checkpoint system, and stream-copy concat. Includes an MCP server, a Claude Code skill, and a CLI.",
   "mcpName": "io.github.beeswaxpat/ffmpeg-render-pro",
   "main": "src/index.js",
@@ -13,6 +13,8 @@
     "src/",
     "bin/",
     "examples/",
+    ".claude/",
+    "llms.txt",
     "CHANGELOG.md",
     "README.md",
     "LICENSE"
@@ -22,7 +24,8 @@
     "detect-gpu": "node bin/ffmpeg-render-pro.js detect-gpu",
     "info": "node bin/ffmpeg-render-pro.js info",
     "mcp": "node src/mcp-server.mjs",
-    "test": "node test/smoke.js && node test/mcp-smoke.js && node test/e2e.js",
+    "test": "node test/smoke.js && node test/checkpoint.test.js && node test/concat.test.js && node test/gpu-detect.test.js && node test/dashboard.test.js && node test/cli.test.js && node test/ffmpeg-bin.test.js && node test/renderer.test.js && node test/encoder.test.js && node test/audio-merge.test.js && node test/mcp-smoke.js && node test/e2e.js",
+    "test:unit": "node test/checkpoint.test.js && node test/concat.test.js && node test/gpu-detect.test.js && node test/dashboard.test.js && node test/cli.test.js && node test/ffmpeg-bin.test.js && node test/renderer.test.js && node test/encoder.test.js && node test/audio-merge.test.js",
     "test:smoke": "node test/smoke.js",
     "test:mcp": "node test/mcp-smoke.js",
     "test:e2e": "node test/e2e.js",
@@ -45,9 +48,14 @@
     "audio",
     "concat",
     "mcp",
+    "mcp-server",
     "model-context-protocol",
     "claude",
-    "claude-code"
+    "claude-code",
+    "video-rendering",
+    "parallel-rendering",
+    "ffmpeg-tools",
+    "ai-agent-tools"
   ],
   "author": "Beeswax Pat (https://github.com/beeswaxpat)",
   "license": "MIT",

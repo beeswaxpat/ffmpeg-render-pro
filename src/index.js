@@ -6,8 +6,9 @@
  */
 const { renderParallel } = require('./core/parallel-renderer');
 const { createEncoder } = require('./core/encoder');
-const { detectGPU, getCodecArgs, getFFmpegVersion, checkFFmpeg, validateResolution } = require('./core/gpu-detect');
-const { getOptimalWorkers, getConfig, getResolutionTier } = require('./core/config');
+const { detectGPU, getCodecArgs, getEncoderIO, getEncoderCandidates, validateEncoder, getFFmpegVersion, checkFFmpeg, validateResolution } = require('./core/gpu-detect');
+const { getOptimalWorkers, getConfig, getResolutionTier, computeTotalFrames } = require('./core/config');
+const { ffmpegBin, ffprobeBin } = require('./core/ffmpeg-bin');
 const { concatSegments } = require('./core/concat');
 const { colorGrade, PRESETS: COLOR_PRESETS } = require('./core/color-grade');
 const { mergeAudio } = require('./core/audio-merge');
@@ -23,6 +24,9 @@ module.exports = {
   // GPU detection
   detectGPU,
   getCodecArgs,
+  getEncoderIO,
+  getEncoderCandidates,
+  validateEncoder,
   getFFmpegVersion,
   checkFFmpeg,
   validateResolution,
@@ -31,6 +35,11 @@ module.exports = {
   getOptimalWorkers,
   getConfig,
   getResolutionTier,
+  computeTotalFrames,
+
+  // ffmpeg binary resolution (FFMPEG_RENDER_PRO_FFMPEG / _FFPROBE aware)
+  ffmpegBin,
+  ffprobeBin,
 
   // Post-processing
   concatSegments,

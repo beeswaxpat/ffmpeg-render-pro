@@ -19,7 +19,10 @@ const { getOptimalWorkers } = require('../src/core/config');
 const flags = {};
 for (const arg of process.argv.slice(2)) {
   if (arg.startsWith('--')) {
-    const [key, val] = arg.slice(2).split('=');
+    // Split on the FIRST '=' only so values may contain '=' (--title=A=B).
+    const eq = arg.indexOf('=', 2);
+    const key = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
+    const val = eq === -1 ? undefined : arg.slice(eq + 1);
     flags[key] = val !== undefined ? val : true;
   }
 }

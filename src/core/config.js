@@ -63,6 +63,24 @@ function getOptimalWorkers(options = {}) {
 }
 
 /**
+ * Frame count for an fps/duration pair.
+ *
+ * The epsilon absorbs binary floating-point error on mathematically integral
+ * products (25 * 4.6 === 114.99999999999999 in doubles) so they resolve to
+ * the intended integer instead of silently dropping a frame. It is orders of
+ * magnitude above accumulated double error for any realistic frame count and
+ * orders of magnitude below one frame, so genuinely fractional products
+ * (e.g. 10fps * 0.35s = 3.5) still floor.
+ *
+ * @param {number} fps - Framerate
+ * @param {number} duration - Duration in seconds
+ * @returns {number} Total frames (>= 1)
+ */
+function computeTotalFrames(fps, duration) {
+  return Math.max(1, Math.floor(fps * duration + 1e-6));
+}
+
+/**
  * Plan the worker split for a render.
  *
  * Chunks are sized by the *requested* worker count, but with ceil() chunking
@@ -129,4 +147,4 @@ function getConfig(options = {}) {
   };
 }
 
-module.exports = { getOptimalWorkers, getConfig, getResolutionTier, planWorkers };
+module.exports = { getOptimalWorkers, getConfig, getResolutionTier, planWorkers, computeTotalFrames };

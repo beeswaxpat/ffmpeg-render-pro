@@ -6,6 +6,7 @@
  */
 const { spawn } = require('child_process');
 const { getCodecArgs } = require('./gpu-detect');
+const { ffmpegBin } = require('./ffmpeg-bin');
 
 const STDERR_CAP = 8192;
 
@@ -91,7 +92,7 @@ function colorGrade(options) {
       outputPath,
     ];
 
-    const ffmpeg = spawn('ffmpeg', args, {
+    const ffmpeg = spawn(ffmpegBin(), args, {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 

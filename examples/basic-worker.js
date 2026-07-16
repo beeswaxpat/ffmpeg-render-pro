@@ -30,6 +30,15 @@ function mulberry32(seed) {
 
 const rng = mulberry32(seed);
 
+// Post at most one terminal error and never send 'done' after 'error':
+// the parent treats the first terminal message as the worker's outcome.
+let sentError = false;
+function postError(message) {
+  if (sentError) return;
+  sentError = true;
+  parentPort.postMessage({ type: 'error', workerId, error: message });
+}
+
 // --- Particle system ---
 const NUM_PARTICLES = 80;
 const particles = [];
@@ -197,7 +206,7 @@ async function main() {
   const codecArgs = Array.isArray(workerData.codecArgs) && workerData.codecArgs.length > 0
     ? workerData.codecArgs
     : ['-c:v', 'libx264', '-preset', 'fast', '-crf', '20'];
-  const ffmpeg = spawn('ffmpeg', [
+  const ffmpeg = spawn(process.env.FFMPEG_RENDER_PRO_FFMPEG || 'ffmpeg', [
     '-y',
     '-f', 'rawvideo',
     '-pixel_format', 'bgra',
@@ -210,26 +219,69 @@ async function main() {
     segmentPath,
   ], { stdio: ['pipe', 'pipe', 'pipe'] });
 
+  // Keep only the last 8KB of stderr: ffmpeg writes stats lines continuously,
+  // so an uncapped buffer grows unbounded on long renders. The tail carries
+  // the error message when ffmpeg fails.
+  const STDERR_CAP = 8192;
   let stderrData = '';
-  ffmpeg.stderr.on('data', (chunk) => { stderrData += chunk.toString(); });
+  ffmpeg.stderr.on('data', (chunk) => {
+    stderrData += chunk.toString();
+    if (stderrData.length > STDERR_CAP) stderrData = stderrData.slice(-STDERR_CAP);
+  });
+
+  // Capture stdin stream errors (EPIPE when ffmpeg dies mid-pipe) so the
+  // write loop can surface the captured ffmpeg stderr instead of crashing
+  // the worker with an unhandled stream 'error' event.
+  let streamError = null;
+  ffmpeg.stdin.on('error', (err) => { if (!streamError) streamError = err; });
+
+  // Track exit state from a single early listener: the final close-wait must
+  // not attach 'close' after ffmpeg already exited (it would hang forever).
+  let closed = false;
+  let closeCode = null;
+  ffmpeg.on('close', (code) => { closed = true; closeCode = code; });
 
   // Surface spawn failures (e.g. ffmpeg missing mid-run) instead of crashing
   // the worker with an unhandled 'error' event.
   ffmpeg.on('error', (err) => {
-    parentPort.postMessage({ type: 'error', workerId, error: 'ffmpeg spawn failed: ' + err.message });
+    postError('ffmpeg spawn failed: ' + err.message);
   });
 
   const framesToRender = endFrame - startFrame;
   const reportInterval = Math.max(1, Math.floor(framesToRender / 100)); // ~100 progress updates
   const startTime = Date.now();
 
+  // Buffer-reuse constraint: write() returning true does NOT mean the chunk
+  // was flushed; the stream may still hold it by reference. Frames under the
+  // pipe highWaterMark can return true while queued, so those must be copied.
+  // Bigger frames keep the zero-copy reuse: write() returns false and the
+  // drain wait guarantees a full flush before the buffer is mutated again.
+  const copyFrames = frameSize < 64 * 1024;
+
   for (let f = startFrame; f < endFrame; f++) {
+    if (streamError || closed) {
+      const cause = streamError ? streamError.message : `exited early with code ${closeCode}`;
+      throw new Error(`ffmpeg encode failed (${cause}): ${stderrData.slice(-500)}`);
+    }
+
     renderFrame(f, buffer, px32);
 
     // Write with backpressure
-    const ok = ffmpeg.stdin.write(buffer);
+    const ok = ffmpeg.stdin.write(copyFrames ? Buffer.from(buffer) : buffer);
     if (!ok) {
-      await new Promise(r => ffmpeg.stdin.once('drain', r));
+      // Also wake on error/close so a dead ffmpeg cannot hang the drain wait;
+      // the check at the top of the loop surfaces the failure.
+      await new Promise((resolve) => {
+        const settle = () => {
+          ffmpeg.stdin.off('drain', settle);
+          ffmpeg.stdin.off('error', settle);
+          ffmpeg.off('close', settle);
+          resolve();
+        };
+        ffmpeg.stdin.once('drain', settle);
+        ffmpeg.stdin.once('error', settle);
+        ffmpeg.once('close', settle);
+      });
     }
 
     // Report progress
@@ -251,18 +303,21 @@ async function main() {
     }
   }
 
-  // Close encoder
+  // Close encoder. Resolve from the captured state when ffmpeg already
+  // exited; attaching 'close' after the event fired would hang forever.
   ffmpeg.stdin.end();
   await new Promise((resolve, reject) => {
-    ffmpeg.on('close', (code) => {
+    const finish = (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`ffmpeg exited ${code}: ${stderrData.slice(-300)}`));
-    });
+      else reject(new Error(`ffmpeg exited ${code}: ${stderrData.slice(-500)}`));
+    };
+    if (closed) return finish(closeCode);
+    ffmpeg.once('close', finish);
   });
 
-  parentPort.postMessage({ type: 'done', workerId });
+  if (!sentError) parentPort.postMessage({ type: 'done', workerId });
 }
 
 main().catch(err => {
-  parentPort.postMessage({ type: 'error', workerId, error: err.message });
+  postError(err.message);
 });

@@ -18,6 +18,11 @@ class ProgressTracker extends EventEmitter {
     this.startTime = Date.now();
     this.title = options.title || 'ffmpeg-render-pro';
     this.resolution = options.resolution || '1920x1080';
+    // Where the ANSI terminal ticker is written. Default: process.stdout
+    // (unchanged behavior). Pass null to disable ALL terminal output while
+    // keeping the dashboard JSON writes - required when stdout is a
+    // protocol channel (MCP stdio) rather than a console.
+    this._terminalStream = options.terminalStream === undefined ? process.stdout : options.terminalStream;
 
     this.workers = new Array(this.numWorkers).fill(null).map(() => ({
       pct: 0, fps: 0, frame: 0, eta: 0, status: 'waiting', done: false,
@@ -34,6 +39,10 @@ class ProgressTracker extends EventEmitter {
     // serves, and from cursor-up redrawing bars that were never drawn (which
     // overwrote unrelated console output in library use).
     this._started = false;
+    // Progress writes are best-effort (a failed write must never kill a
+    // render), but the first failure gets one stderr warning instead of
+    // the dashboard silently going dark forever.
+    this._writeWarned = false;
   }
 
   /**
@@ -45,11 +54,30 @@ class ProgressTracker extends EventEmitter {
       fs.mkdirSync(this._previewDir, { recursive: true });
     }
 
-    // Write global config for HTML dashboard
+    // Clear stale progress JSON from a previous render into the same output
+    // dir. Leftover worker-*.json files saying done:true made the dashboard
+    // declare RENDER COMPLETE on its first poll of a fresh run.
+    try {
+      for (const name of fs.readdirSync(this._previewDir)) {
+        if (name === 'global.json' || /^worker-\d+\.json$/.test(name)) {
+          try { fs.unlinkSync(path.join(this._previewDir, name)); } catch {}
+        }
+      }
+    } catch (err) {
+      this._warnWriteFailure(err);
+    }
+
+    // Write global config for HTML dashboard, plus a clean per-worker slate
+    // (status 'waiting', done false) so the dashboard starts from zero.
     this._writeGlobalJSON();
+    for (let i = 0; i < this.numWorkers; i++) {
+      this._writeWorkerJSON(i);
+    }
 
     // Terminal dashboard - tick once/sec: terminal redraw + fresh global.json
-    for (let i = 0; i < this.numWorkers + 1; i++) process.stdout.write('\n');
+    if (this._terminalStream) {
+      for (let i = 0; i < this.numWorkers + 1; i++) this._terminalStream.write('\n');
+    }
     this._dashboardInterval = setInterval(() => {
       this._drawTerminal();
       this._writeGlobalJSON();
@@ -58,7 +86,10 @@ class ProgressTracker extends EventEmitter {
 
   /**
    * Set the current pipeline phase.
-   * @param {string} phase - Phase key (initializing, fast-forward, rendering, concatenating, grading, merging-audio, complete)
+   * @param {string} phase - Phase key (initializing, spawning, fast-forward,
+   *   rendering, concatenating, grading, merging-audio, complete). The
+   *   terminal 'error' phase is set via fail(), not here. The dashboard
+   *   renders all of these; unknown phases degrade to detail text only.
    * @param {string} [detail] - Human-readable detail string
    */
   setPhase(phase, detail) {
@@ -89,6 +120,24 @@ class ProgressTracker extends EventEmitter {
    */
   workerDone(workerId) {
     this.updateWorker(workerId, { pct: 100, status: 'done', done: true, eta: 0 });
+  }
+
+  /**
+   * Mark the render as failed (terminal). Stops the ticker and writes an
+   * 'error' phase to global.json so the dashboard shows the failure instead
+   * of freezing at the last good state. Call before stopping the dashboard
+   * server so the page gets at least one poll of the error state.
+   * @param {string|Error} [message] - Human-readable failure description
+   */
+  fail(message) {
+    if (this._dashboardInterval) {
+      clearInterval(this._dashboardInterval);
+      this._dashboardInterval = null;
+    }
+    const msg = (message && message.message) ? message.message : String(message || 'Render failed');
+    this.phase = 'error';
+    this.phaseDetail = msg.slice(0, 300);
+    this._writeGlobalJSON();
   }
 
   /**
@@ -134,7 +183,9 @@ class ProgressTracker extends EventEmitter {
         phase: this.phase,
         phaseDetail: this.phaseDetail,
       }));
-    } catch {}
+    } catch (err) {
+      this._warnWriteFailure(err);
+    }
   }
 
   _writeWorkerJSON(workerId) {
@@ -145,13 +196,25 @@ class ProgressTracker extends EventEmitter {
         pct: w.pct, fps: w.fps, eta: w.eta, done: w.done,
         framesRendered: w.frame, status: w.status,
       }));
-    } catch {}
+    } catch (err) {
+      this._warnWriteFailure(err);
+    }
+  }
+
+  _warnWriteFailure(err) {
+    if (this._writeWarned) return;
+    this._writeWarned = true;
+    console.error(`  Warning: cannot write dashboard progress files (${err.message}); render continues, live dashboard may not update.`);
   }
 
   _drawTerminal() {
-    const elapsed = ((Date.now() - this.startTime) / 1000).toFixed(0);
+    if (!this._terminalStream) return;
+    const s = this.getSummary();
     const lines = [];
-    lines.push(`\x1b[2K  [${elapsed}s elapsed]`);
+    // Overall summary on the existing header line (same line count as
+    // before, so the cursor-up redraw math is untouched).
+    const etaStr = s.maxEta > 0 ? `${Math.round(s.maxEta)}s` : '--';
+    lines.push(`\x1b[2K  [${s.elapsed.toFixed(0)}s elapsed] ${s.overallPct.toFixed(1)}% overall | ${s.totalFps.toFixed(1)} fps | ETA ${etaStr}`);
 
     // Note: global.json is written by the caller (setPhase / interval tick),
     // not here. Writing it in both places caused 2 disk writes per tick.
@@ -177,9 +240,9 @@ class ProgressTracker extends EventEmitter {
       lines.push(`\x1b[2K  W${i} [${bar}] ${statusStr}`);
     }
 
-    process.stdout.write(`\x1b[${this.numWorkers + 1}A`);
+    this._terminalStream.write(`\x1b[${this.numWorkers + 1}A`);
     for (const line of lines) {
-      process.stdout.write(line + '\n');
+      this._terminalStream.write(line + '\n');
     }
   }
 }

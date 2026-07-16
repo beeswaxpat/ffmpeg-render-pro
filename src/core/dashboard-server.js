@@ -259,6 +259,17 @@ function startDashboard(options) {
         // Listening succeeded: drop the retry handler so a later runtime
         // error can't re-enter tryListen() on an already-bound socket.
         server.removeListener('error', onListenError);
+        // Replace it with a benign consumer. With zero 'error' listeners, a
+        // post-listen server error (e.g. EMFILE during accept under fd
+        // pressure) becomes an uncaught exception that kills the whole
+        // render for a cosmetic feature. Warn once on stderr and carry on.
+        let runtimeErrorWarned = false;
+        server.on('error', (err) => {
+          if (!runtimeErrorWarned) {
+            runtimeErrorWarned = true;
+            console.error(`  Dashboard server error (dashboard may stop updating, render continues): ${err.message}`);
+          }
+        });
         const url = `http://${BIND_HOST}:${port}`;
         if (!silent) {
           console.log('');

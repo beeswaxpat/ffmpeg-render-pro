@@ -8,30 +8,33 @@ argument-hint: [task-description]
 
 You are an expert video/audio render engineer. This skill covers the **ffmpeg-render-pro** toolkit - a parallel rendering system optimized for YouTube Shorts and long-form videos.
 
-**Toolkit location:** The user may have `ffmpeg-render-pro` installed locally or via npm. Check with `node -e "require('ffmpeg-render-pro')"` or look for it on the Desktop.
+**Toolkit location:** The user may have `ffmpeg-render-pro` installed globally (`npm install -g ffmpeg-render-pro` provides the `ffmpeg-render-pro` CLI) or as a local dependency. Check with `ffmpeg-render-pro version` or `node -e "require('ffmpeg-render-pro')"`. In a repo checkout, `node bin/ffmpeg-render-pro.js` is equivalent to the installed CLI.
 
 ## Prerequisites
 
 Before any render task, verify:
 1. **Node.js >= 18** - `node --version`
-2. **ffmpeg on PATH** - `ffmpeg -version`
-3. If ffmpeg is missing, tell the user: "Install ffmpeg from https://ffmpeg.org/download.html and ensure it's on your PATH."
+2. **ffmpeg available** - `ffmpeg -version`. If ffmpeg is installed but not on PATH, set `FFMPEG_RENDER_PRO_FFMPEG` to its full path (a sibling ffprobe is auto-derived; `FFMPEG_RENDER_PRO_FFPROBE` overrides it explicitly). Both are read at call time.
+3. If ffmpeg is missing entirely, tell the user: "Install ffmpeg from https://ffmpeg.org/download.html and ensure it's on your PATH, or set FFMPEG_RENDER_PRO_FFMPEG to its full path."
 
 ## Quick Start (for any render task)
 
 ```bash
 # Check system capabilities
-node bin/ffmpeg-render-pro.js info
+ffmpeg-render-pro info
 
-# Run a benchmark to test the setup
-node examples/render-test.js
+# Run a benchmark to test the setup (5s test render)
+ffmpeg-render-pro benchmark
 
-# Render a YouTube Short (vertical, 60s)
-node examples/render-test.js --width=1080 --height=1920 --fps=30 --duration=60
+# Render a YouTube Short shape (vertical, 60s) with the bundled test worker
+ffmpeg-render-pro benchmark --width=1080 --height=1920 --fps=30 --duration=60
 
-# Force CPU or GPU encoding
-node bin/ffmpeg-render-pro.js detect-gpu --cpu
-node bin/ffmpeg-render-pro.js detect-gpu --gpu
+# Render with your own worker script
+ffmpeg-render-pro render my-worker.js --duration=60 --output=video.mp4
+
+# Force CPU or GPU encoding during detection
+ffmpeg-render-pro detect-gpu --cpu
+ffmpeg-render-pro detect-gpu --gpu
 ```
 
 ---
@@ -40,7 +43,7 @@ node bin/ffmpeg-render-pro.js detect-gpu --gpu
 
 1. **Pre-scale BEFORE heavy processing** - Never run expensive filters (minterpolate, color grading) on source resolution. Downscale to target resolution FIRST.
 2. **Parallel rendering when possible** - 8-worker parallel pipeline with segment concat for procedural video. Single process for minterpolate (segment overhead dominates).
-3. **GPU encoding when available** - Use `detectGPU()` to auto-detect. Use `--cpu` flag to force software encoding if GPU causes issues. Use `--gpu` flag to require hardware encoding.
+3. **GPU encoding when available** - Use `detectGPU()` to auto-detect. Parallel segment encoding always uses CPU x264 by design (GPU encoder session limits); GPU encoders apply to final single-pass encodes (color grades, single-file renders). The `--cpu`/`--gpu` CLI flags exist on `detect-gpu` and `info` only; in the API pass `forceEncoder: 'cpu'` or `'gpu'` to `detectGPU()`.
 4. **Live render dashboard REQUIRED** - The dashboard auto-opens in the browser before rendering starts. Every render gets a live progress view. (Headless/CI runs can opt out with `--no-dashboard` or `--no-open`, and `--linger-ms=0` exits immediately after completion.)
 5. **One render at a time** - Sequential is faster than competing for cores.
 6. **`-movflags +faststart` on EVERYTHING** - Required for YouTube uploads and streaming.
@@ -54,14 +57,14 @@ The toolkit auto-detects the best encoder for the user's system:
 | Platform | GPU Encoders Tested (in priority order) |
 |----------|----------------------------------------|
 | Windows  | NVENC, AMF, Quick Sync, then CPU fallback |
-| macOS    | VideoToolbox, Quick Sync, then CPU fallback |
+| macOS    | VideoToolbox, then CPU fallback |
 | Linux    | NVENC, VA-API, Quick Sync, then CPU fallback |
 
-Each encoder is validated with a 1-frame test encode - not just checked for existence. Results are cached for 7 days.
+Each encoder is validated with a 1-frame test encode using its real production args - not just checked for existence (this is what makes VA-API device init and Intel-Mac VideoToolbox quirks surface at detection time instead of render time). Results are cached for 7 days in `~/.ffmpeg-render-pro` (override the directory with `FFMPEG_RENDER_PRO_CACHE_DIR`); the cache invalidates itself on ffmpeg version changes and detection-logic upgrades.
 
 ### Force Modes
-- `--cpu` or `forceEncoder: 'cpu'` - Skip all GPU detection, use libx264. Use this if GPU encoding produces artifacts or errors.
-- `--gpu` or `forceEncoder: 'gpu'` - Require a hardware encoder. Fails with a clear error if none found. Use this when you know the user has a GPU and want maximum speed.
+- `--cpu` (CLI: `detect-gpu`/`info` only) or `forceEncoder: 'cpu'` (API) - Skip all GPU detection, use libx264. Use this if GPU encoding produces artifacts or errors.
+- `--gpu` (CLI: `detect-gpu`/`info` only) or `forceEncoder: 'gpu'` (API) - Require a hardware encoder. Fails with a clear error if none found. Use this when you know the user has a GPU and want maximum speed.
 
 ### Encoding Presets
 
@@ -74,12 +77,29 @@ Each encoder is validated with a 1-frame test encode - not just checked for exis
 
 ### Worker Count (auto-detected)
 
-| Resolution | Workers | Notes |
-|:-----------|:--------|:------|
-| 480p | 8 | ~200MB RAM per worker |
-| 720p | 8 | ~400MB RAM per worker |
-| 1080p | 8 | ~800MB RAM per worker |
-| 4K | 4 | ~2.5GB RAM per worker |
+| Resolution | Typical workers | RAM budget |
+|:-----------|:----------------|:-----------|
+| 480p | 8 | ~200MB per worker |
+| 720p | 8 | ~400MB per worker |
+| 1080p | 8 | ~800MB per worker |
+| 1440p | 4-8 | ~1.5GB per worker |
+| 4K | 4 | ~2.5GB per worker |
+
+Auto-detection takes the minimum of the RAM budget, CPU cores minus 2, and `maxWorkers` (default cap 8). `workerCount` is a request, not a guarantee: the renderer never spawns more workers than there are frames, so short renders use fewer (10 frames across 8 requested workers spawns 5).
+
+### CLI quality flags (render + benchmark)
+
+- `--crf=NN` - x264 quality, 0-51, lower is higher quality (default 20)
+- `--encoder-preset=NAME` - x264 speed preset: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow, placebo (default fast)
+
+Both flow to workers via `workerData.codecArgs`. Unknown flags warn on stderr and continue; unparseable numeric values (e.g. `--fps=abc`) exit 1.
+
+### Environment variables
+
+- `FFMPEG_RENDER_PRO_FFMPEG` - full path to ffmpeg when it is not on PATH
+- `FFMPEG_RENDER_PRO_FFPROBE` - full path to ffprobe (auto-derived as the ffmpeg sibling when unset)
+- `FFMPEG_RENDER_PRO_CACHE_DIR` - GPU detection cache directory (default `~/.ffmpeg-render-pro`)
+- `FFMPEG_RENDER_PRO_DEBUG=1` - full stack traces on CLI errors
 
 ---
 
@@ -87,20 +107,27 @@ Each encoder is validated with a 1-frame test encode - not just checked for exis
 
 ```js
 const {
-  renderParallel,    // Core parallel rendering engine
-  createEncoder,     // Raw frame pipe to ffmpeg
-  detectGPU,         // Cross-platform GPU detection
-  checkFFmpeg,       // Verify ffmpeg is installed
+  renderParallel,     // Core parallel rendering engine
+  createEncoder,      // Raw frame pipe to ffmpeg
+  detectGPU,          // Cross-platform GPU detection
+  checkFFmpeg,        // Verify ffmpeg is installed
   validateResolution, // Sanity check dimensions
-  getConfig,         // Auto-tune workers + codec selection
-  concatSegments,    // Stream-copy segment joining (instant)
-  colorGrade,        // Apply color grades
-  COLOR_PRESETS,     // Built-in presets: noir, warm, cool, cinematic, vintage
-  mergeAudio,        // Combine video + audio (no video re-encode)
-  startDashboard,    // Live progress dashboard
-  saveCheckpoint,    // Checkpoint state serialization
-  loadCheckpoint,    // Checkpoint restoration
-  restoreCheckpoint, // Restore systems from checkpoint
+  getConfig,          // Auto-tune workers + codec selection
+  computeTotalFrames, // Float-safe frame count for fps x duration
+  concatSegments,     // Stream-copy segment joining (validates by default)
+  colorGrade,         // Apply color grades
+  COLOR_PRESETS,      // Built-in presets: noir, warm, cool, cinematic, vintage
+  mergeAudio,         // Combine video + audio (no video re-encode)
+  startDashboard,     // Live progress dashboard
+  ProgressTracker,    // Progress + dashboard JSON (fail(), terminalStream)
+  saveCheckpoint,     // Checkpoint state serialization
+  loadCheckpoint,     // Checkpoint restoration
+  restoreCheckpoint,  // Restore systems from checkpoint
+  generateCheckpoints,// Update-only pass that writes checkpoints
+  getEncoderIO,       // Encoder recipe as { inputArgs, filter, outputArgs }
+  getCodecArgs,       // Encoder recipe as one flat arg array
+  ffmpegBin,          // Resolved ffmpeg binary (env-var aware)
+  ffprobeBin,         // Resolved ffprobe binary (env-var aware)
 } = require('ffmpeg-render-pro');
 ```
 
@@ -110,18 +137,24 @@ const {
 await renderParallel({
   workerScript: './my-worker.js',  // Your frame generator (required)
   outputPath: './output.mp4',      // Final output path (required)
-  width: 1920,          // Frame width (max 7680)
-  height: 1080,         // Frame height (max 4320)
+  width: 1920,          // Frame width (max 7680, must be even)
+  height: 1080,         // Frame height (max 4320, must be even)
   fps: 60,              // Framerate (1-240)
   duration: 60,         // Seconds
   seed: 42,             // RNG seed for deterministic output
   title: 'My Render',   // Dashboard title
   dashboard: true,       // Enable live dashboard
   autoOpen: true,        // Auto-open browser
-  workerCount: 8,       // Override auto-detected count
-  workerData: {},        // Extra data for workers
+  workerCount: 8,       // Requested count (never exceeds frame count)
+  maxWorkers: 8,        // Cap for the auto-detected count
+  dashboardLingerMs: 0, // 0 = resolve immediately (library use); CLI keeps 30s
+  quiet: false,         // true = byte-clean stdout, status to stderr
+  signal: undefined,    // AbortSignal; abort() stops workers + cleans temp
+  workerData: {},        // Extra data for workers (e.g. codecArgs)
 });
 ```
+
+Resolves with `{ outputPath, elapsed, totalFrames, avgFps }`. A failed worker's frame range is retried once automatically before the render fails; failures show a RENDER FAILED banner on the live dashboard.
 
 ### Writing a Worker Script
 
@@ -131,7 +164,7 @@ Workers receive `workerData` from `worker_threads` and must:
 3. Report progress via `parentPort.postMessage()`
 4. Signal completion with `{ type: 'done', workerId }`
 
-See `examples/basic-worker.js` for a complete, working template.
+See `examples/basic-worker.js` inside the installed package for a complete, working template (hardened: stderr tail capture, stdin error handling, sub-64KB frame-buffer copies). If the MCP server is wired in, the `get_worker_template` tool returns the same contract plus the full template source.
 
 ---
 
@@ -183,6 +216,21 @@ await mergeAudio({
 
 ---
 
+## Concat (stream copy, instant)
+
+```js
+// Validates codec/resolution/fps/pixel format with ffprobe first (default),
+// because ffmpeg happily concats mismatched inputs into a corrupt file.
+await concatSegments(['a.mp4', 'b.mp4'], 'joined.mp4');
+
+// Inputs known uniform by construction? Skip the probes:
+await concatSegments(['a.mp4', 'b.mp4'], 'joined.mp4', { validate: false });
+```
+
+Missing and zero-byte inputs are always rejected. If ffprobe is unavailable the compatibility check is skipped with a stderr warning.
+
+---
+
 ## Checkpoint System
 
 For renders longer than ~10 minutes, use checkpoints to avoid redundant fast-forwarding:
@@ -204,6 +252,8 @@ if (checkpoint) {
   // Fast-forward only from resumeFrame to startFrame (instead of from 0)
 }
 ```
+
+Rules: `_frame` and `_timestamp` are reserved checkpoint metadata keys, so no system may use either name. A checkpoint labeled frame F contains exactly F update() calls (fixed in 1.5.0; regenerate checkpoint dirs created by older versions, since they embedded one extra update).
 
 ---
 
@@ -230,7 +280,7 @@ For Shorts (vertical, 30-60s):
 - Always: **`-movflags +faststart`**
 
 ```bash
-node examples/render-test.js --width=1080 --height=1920 --fps=30 --duration=60
+ffmpeg-render-pro benchmark --width=1080 --height=1920 --fps=30 --duration=60
 ```
 
 ---

@@ -79,7 +79,9 @@ function loadCheckpoint(checkpointDir, targetFrame) {
  */
 function restoreCheckpoint(checkpoint, systems) {
   for (const [name, system] of Object.entries(systems)) {
-    if (checkpoint[name] && system && typeof system.setState === 'function') {
+    // Falsy states (0, '', false, null) are valid getState() output and must
+    // restore; only a missing key means "not in this checkpoint".
+    if (checkpoint[name] !== undefined && system && typeof system.setState === 'function') {
       system.setState(checkpoint[name]);
     }
   }
@@ -118,14 +120,9 @@ function generateCheckpoints(options) {
   console.log(`Output: ${checkpointDir}\n`);
 
   for (let f = 0; f < totalFrames; f++) {
-    // Update all systems (no drawing)
-    for (const system of Object.values(systems)) {
-      if (system && typeof system.update === 'function') {
-        system.update(dt);
-      }
-    }
-
-    // Save checkpoint at intervals
+    // Save BEFORE this frame's update: a checkpoint labeled f must contain
+    // exactly f updates so the worker fast-forward convention
+    // (state at frame F = F update() calls) resumes deterministically.
     if (f > 0 && f % interval === 0) {
       const filepath = saveCheckpoint(checkpointDir, f, systems);
       count++;
@@ -136,6 +133,13 @@ function generateCheckpoints(options) {
         onCheckpoint(f, count, elapsed);
       } else {
         console.log(`  Checkpoint ${count} at frame ${f} (${pct}%, ${elapsed.toFixed(1)}s) -> ${path.basename(filepath)}`);
+      }
+    }
+
+    // Update all systems (no drawing)
+    for (const system of Object.values(systems)) {
+      if (system && typeof system.update === 'function') {
+        system.update(dt);
       }
     }
   }

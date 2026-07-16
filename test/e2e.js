@@ -165,6 +165,30 @@ async function main() {
       assert.strictEqual(frameMd5(outA), frameMd5(outB));
     });
 
+    // Seed regression: seed:0 must not fall through to the default (42),
+    // and different seeds must actually change the pixels.
+    const tinyRender = (out, seed) => lib.renderParallel({
+      workerScript: WORKER,
+      outputPath: out,
+      width: 64, height: 64, fps: 10, duration: 0.6,
+      workerCount: 2,
+      seed,
+      dashboard: false,
+    });
+    const seed0a = path.join(tmp, 'seed0a.mp4');
+    await step('seed:0 renders byte-identical framemd5 across runs', async () => {
+      const seed0b = path.join(tmp, 'seed0b.mp4');
+      await tinyRender(seed0a, 0);
+      await tinyRender(seed0b, 0);
+      assert.strictEqual(frameMd5(seed0a), frameMd5(seed0b));
+    });
+
+    await step('seed:1 renders different frames than seed:0', async () => {
+      const seed1 = path.join(tmp, 'seed1.mp4');
+      await tinyRender(seed1, 1);
+      assert.ok(frameMd5(seed1) !== frameMd5(seed0a), 'different seed changed the pixels');
+    });
+
     // --- 4. Stream-copy concat ---
     const outConcat = path.join(tmp, 'concat.mp4');
     await step('concatSegments joins two renders into 24 frames', async () => {

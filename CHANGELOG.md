@@ -3,6 +3,63 @@
 All notable changes to `ffmpeg-render-pro` are documented in this file.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-07-16
+
+A reliability and agent-integration pass. Fully backward-compatible: every CLI flag, API signature, MCP tool name, worker contract, and checkpoint file format from 1.4.x works unchanged; all changes are additive.
+
+### Fixed
+
+- **`generateCheckpoints` off-by-one.** A checkpoint labeled frame F embedded F+1 updates, so a checkpoint-resumed worker rendered state one frame ahead of a sequential render, breaking the identical-to-sequential guarantee. Checkpoints regenerated on 1.5.0 embed exactly F updates, matching the documented fast-forward recipe. Renders resumed from pre-1.5.0 checkpoint dirs keep the old one-frame skew until regenerated; the file format is unchanged.
+- **`restoreCheckpoint` now restores falsy-but-valid states.** `0`, `''`, `false`, and `null` are legitimate `getState()` output that `saveCheckpoint` stores; restore previously skipped them silently.
+- **Fractional fps x duration no longer drops a frame to float error.** 25fps x 4.6s renders 115 frames, not 114 (`25 * 4.6 === 114.99999999999999` in doubles). The float-safe helper is exported as `computeTotalFrames(fps, duration)`.
+- **Failed renders await worker-thread termination before removing the temp dir.** `terminate()` is async and each worker's ffmpeg child holds its segment file open, so the early `rmSync` hit EBUSY/EPERM on Windows and silently leaked multi-GB temp dirs.
+- **VA-API on Linux actually works now.** The validation probe and the codec args both include device init (`-init_hw_device vaapi`) and the required `format=nv12,hwupload` filter; previously every Linux AMD/Intel GPU failed the bare probe and silently fell back to CPU. No device path is hardcoded; ffmpeg picks the default DRM node.
+- **VideoToolbox validation and quality mapping.** Encoder validation now probes with the exact production args, so Intel Macs (where VideoToolbox rejects `-q:v`) fall back to CPU at detection time instead of failing at render time. The quality mapping was inverted (VT's `-q:v` is 1-100 where higher is better, the opposite of crf/cq); it is now `q = clamp(round(100 - 2*cq), 1, 100)`, so cq 20 maps to `-q:v 60`.
+- **Intel Quick Sync removed from the macOS encoder candidate lists.** QSV does not exist on macOS.
+- **GPU cache schema bumped to v3** because probe semantics changed; expect one re-probe per machine after upgrading.
+- **`concatSegments` validates segment compatibility before concatenating.** Each input is probed with ffprobe (one spawn per segment) and codec, width, height, fps, and pixel-format mismatches are rejected up front; ffmpeg itself accepts mismatched inputs and writes a silently corrupt file. A new third options param `{ validate: false }` skips the probes; when ffprobe is missing the check is skipped with a stderr warning.
+- **POSIX filenames containing backslashes are no longer corrupted in the concat list file.** The path-separator rewrite now runs on win32 only (backslash is a legal filename character on POSIX).
+- **CLI `parseFlags` splits on the first `=` only**, so `--title=A=B` parses as `A=B`. Same fix in `examples/render-test.js`.
+- **The dashboard HTTP server survives post-listen runtime errors.** A server error after startup (for example EMFILE during accept) prints one stderr warning instead of crashing the render.
+- **Stale preview JSON no longer causes an instant false RENDER COMPLETE on re-renders.** `ProgressTracker.start()` clears leftover `global.json` / `worker-*.json` from a previous render into the same output dir.
+- **The dashboard phase strip renders all 8 phases** (added spawning, grading, and merging-audio) plus a safe fallback for unknown future phases.
+- **MCP stdio protocol corruption fixed.** Renders run quiet, all console output routes to stderr, and stdout carries only JSON-RPC frames (enforced by a test that audits every stdout byte).
+- **MCP `color_grade` / `merge_audio` / `concat_videos` return an actionable install/env-var error when ffmpeg is missing** instead of a raw spawn ENOENT.
+- **Example worker hardened** (`examples/basic-worker.js`): frame buffers under 64KB are copied before write (streams can queue small chunks by reference, so reusing the buffer corrupted queued frames); ffmpeg stderr is captured with an 8KB tail cap and included in error messages; stdin EPIPE is handled; and the done/error close race is guarded (never `done` after `error`).
+
+### Added
+
+- **`renderParallel` option `signal`** (AbortSignal): abort stops workers, cleans temp files, and rejects with an error whose `name` is `'AbortError'`.
+- **`renderParallel` option `quiet`**: keeps stdout byte-clean (status to stderr, terminal ticker disabled, dashboard JSON unaffected). This is how the MCP server runs every render.
+- **One-shot automatic retry** of a failed worker's frame range before the render is failed. A stderr warning names the worker and attempt; the retried segment uses a fresh path because the first attempt's ffmpeg child may still hold the original file open.
+- **Post-render output verification**: one cheap ffprobe metadata check warns on stderr if the output is shorter than requested. It never fails the render and is silent when ffprobe is missing.
+- **Render failures surface on the live dashboard.** New `ProgressTracker.fail(message)` writes a terminal `error` phase; the dashboard shows a red RENDER FAILED banner and stops polling, and the browser tab title shows FAILED.
+- **Live overall percent in the dashboard browser tab title** while rendering; the terminal ticker header gained an overall summary line (elapsed, percent, fps, ETA).
+- **`ProgressTracker` constructor option `terminalStream`** (default `process.stdout`; `null` disables the terminal ticker while JSON keeps writing).
+- **`FFMPEG_RENDER_PRO_FFMPEG` / `FFMPEG_RENDER_PRO_FFPROBE` env vars** for ffmpeg installs that are not on PATH. When only the former is set, the sibling ffprobe next to it is derived automatically. Both are read at call time, so long-lived processes pick up changes without a restart, and error messages mention them.
+- **`FFMPEG_RENDER_PRO_CACHE_DIR` env var** overrides the GPU cache directory (default `~/.ffmpeg-render-pro`).
+- **CLI: `--crf=NN` (0-51) and `--encoder-preset=NAME` (x264 preset names) on `render` and `benchmark`**, piped to workers via `workerData.codecArgs`. Unknown flags warn on stderr and continue; unparseable numeric flag values exit 1 with a clear error (previously they silently used defaults).
+- **MCP: `notifications/progress` during `render_video`** (2s cadence plus start and end frames) when the client sends a `progressToken`; client cancellation aborts the render cleanly.
+- **MCP: new `get_worker_template` tool** returning the full worker contract plus the bundled reference worker source; its `templatePath` is usable directly as `worker_script`.
+- **MCP: every tool declares `outputSchema` and returns `structuredContent`** alongside its text. Annotations added: `destructiveHint` on the four writers, `readOnlyHint` on the probes, `openWorldHint: false` everywhere.
+- **MCP: `concat_videos` gained a `validate` param** (default true). Input schemas tightened to the runtime limits (int/min/max), and descriptions rewritten for agent intent-matching with all defaults and units stated (`render_video` fps default stays 30; the CLI default is 60).
+- **Library re-exports**: `getEncoderIO`, `getEncoderCandidates`, `validateEncoder`, `computeTotalFrames`, `ffmpegBin`, `ffprobeBin` are now on the package root.
+- **`getEncoderIO(encoder, opts)`** returns `{ inputArgs, filter, outputArgs }` (`getCodecArgs` composes them). Callers that pass their own `-vf` must merge `getEncoderIO().filter` into their chain; ffmpeg only honors the last `-vf` per stream, which matters for VA-API combined with custom grade filters.
+- **CI: a GitHub Actions test matrix** (Ubuntu/Windows/macOS x Node 18/20/22) with real ffmpeg installs.
+- **The npm tarball now ships the Claude Code skill** (`.claude/`) **and `llms.txt`**, a machine-readable orientation file for AI agents.
+
+### Changed
+
+- **Internal segment concat skips the per-segment ffprobe validation** (segments are uniform by construction from the same worker recipe); the missing/empty-segment checks still run.
+- **The publish workflow pins `mcp-publisher` to a checksummed release** (previously unpinned latest, downloaded with an OIDC token in scope).
+- **The stale repo-root `preview/` directory was removed** (runtime artifact; the dashboard source lives at `src/dashboard/dashboard.html`).
+
+### Tests
+
+- 81 tests grew to 241 across 12 suites. New: checkpoint semantics (including the off-by-one regression), concat validation and quoting (spaces/apostrophes), GPU cache lifecycle plus codec args for all 11 encoders, dashboard HTTP server and the ProgressTracker JSON contract, CLI parsing and validation, ffmpeg-bin env overrides, renderer failure injection (worker error/throw/silent-exit/retry/abort plus quiet-stdout hygiene), `createEncoder` backpressure and error paths, and `mergeAudio` loop/normalize paths.
+- The MCP smoke test expanded to 22 checks, including a real render over stdio, a stdout protocol-hygiene audit of every byte, progress-notification assertions, and server.json drift guards (name and version must match package.json).
+- The e2e suite adds a seed determinism regression: seed 0 renders byte-identical `framemd5` across runs, and seed 1 produces different frames.
+
 ## [1.4.0] - 2026-07-03
 
 A Claude Fable 5 review pass: GPU detection fixed on modern ffmpeg, faster frame generation, and new dashboard controls. Fully backward-compatible: every CLI command, API signature, MCP tool name, and worker contract from 1.3.x works unchanged.

@@ -5,6 +5,7 @@
  * optional loudness normalization, and no video re-encoding.
  */
 const { spawn } = require('child_process');
+const { ffmpegBin } = require('./ffmpeg-bin');
 
 const STDERR_CAP = 8192;
 
@@ -62,7 +63,7 @@ function mergeAudio(options) {
       outputPath,
     );
 
-    const ffmpeg = spawn('ffmpeg', args, {
+    const ffmpeg = spawn(ffmpegBin(), args, {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 

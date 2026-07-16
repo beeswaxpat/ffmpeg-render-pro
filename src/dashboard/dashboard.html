@@ -117,10 +117,37 @@
 
   .live-dot.waiting { background: #fbbf24; box-shadow: 0 0 8px rgba(251,191,36,0.6); }
   .live-dot.complete { background: #00ff88; animation: none; }
+  .live-dot.error { background: #ff4757; box-shadow: 0 0 8px rgba(255,71,87,0.6); animation: none; }
 
   @keyframes livePulse {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  /* Error banner - hidden unless the renderer reports phase 'error' */
+  .error-banner {
+    display: none;
+    background: rgba(127,29,29,0.35);
+    border: 1px solid rgba(255,71,87,0.55);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    backdrop-filter: blur(10px);
+  }
+
+  .error-banner .error-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #ff4757;
+    margin-bottom: 6px;
+  }
+
+  .error-banner .error-message {
+    font-size: 12px;
+    color: #fca5a5;
+    word-break: break-word;
   }
 
   /* Stats Row */
@@ -509,6 +536,12 @@
     </div>
   </div>
 
+  <!-- Error Banner (hidden unless the render fails) -->
+  <div class="error-banner" id="error-banner">
+    <div class="error-title">&#10006; Render Failed</div>
+    <div class="error-message" id="error-message">Unknown error</div>
+  </div>
+
   <!-- Stats Row -->
   <div class="stats-row">
     <div class="stat-card">
@@ -595,8 +628,18 @@
         <div class="phase-label" id="lbl-concatenating">Concat</div>
         <div class="phase-connector" id="conn-concatenating"></div>
       </div>
+      <div class="phase-step" data-phase="grading">
+        <div class="phase-dot" id="dot-grading">6</div>
+        <div class="phase-label" id="lbl-grading">Grade</div>
+        <div class="phase-connector" id="conn-grading"></div>
+      </div>
+      <div class="phase-step" data-phase="merging-audio">
+        <div class="phase-dot" id="dot-merging-audio">7</div>
+        <div class="phase-label" id="lbl-merging-audio">Audio</div>
+        <div class="phase-connector" id="conn-merging-audio"></div>
+      </div>
       <div class="phase-step" data-phase="complete">
-        <div class="phase-dot" id="dot-complete">6</div>
+        <div class="phase-dot" id="dot-complete">8</div>
         <div class="phase-label" id="lbl-complete">Done</div>
       </div>
     </div>
@@ -623,13 +666,42 @@ let initialized = false;
 let renderComplete = false;
 let finalElapsed = 0;
 let pollIntervalId = null;
+let renderFailed = false;
+let pageTitle = 'ffmpeg-render-pro';
 let currentPhase = 'initializing';
-const PHASE_ORDER = ['initializing', 'spawning', 'fast-forward', 'rendering', 'concatenating', 'complete'];
+// Every phase progress.js can emit (see setPhase docstring in
+// src/core/progress.js). 'error' is terminal and handled separately.
+const PHASE_ORDER = ['initializing', 'spawning', 'fast-forward', 'rendering', 'concatenating', 'grading', 'merging-audio', 'complete'];
+
+function showRenderError(message) {
+  if (renderFailed) return;
+  renderFailed = true;
+  currentPhase = 'error';
+  const msg = message || 'Render failed';
+  document.getElementById('error-banner').style.display = 'block';
+  document.getElementById('error-message').textContent = msg;
+  document.getElementById('status-text').textContent = 'RENDER FAILED';
+  const dot = document.getElementById('live-dot');
+  dot.classList.remove('waiting', 'complete');
+  dot.classList.add('error');
+  document.getElementById('overall-bar-text').textContent = 'FAILED';
+  document.getElementById('phase-detail').textContent = '✖ error: ' + msg;
+  document.title = 'FAILED - ' + pageTitle;
+  if (pollIntervalId) { clearInterval(pollIntervalId); pollIntervalId = null; }
+}
 
 function updatePhaseStrip(phase, detail) {
   if (!phase || phase === currentPhase && !detail) return;
+  if (phase === 'error') { showRenderError(detail); return; }
   currentPhase = phase;
   const activeIdx = PHASE_ORDER.indexOf(phase);
+
+  // Unknown future phase: keep the strip at its last known state and just
+  // surface the detail text. Never reset the dots or blank the UI.
+  if (activeIdx === -1) {
+    document.getElementById('phase-detail').textContent = '▶ ' + (detail || phase);
+    return;
+  }
 
   for (let i = 0; i < PHASE_ORDER.length; i++) {
     const p = PHASE_ORDER[i];
@@ -786,7 +858,8 @@ async function poll() {
       const title = global.title || 'ffmpeg-render-pro';
       document.getElementById('subtitle').textContent =
         `${title} | ${res} | ${TOTAL_FRAMES.toLocaleString()} frames | ${NUM_WORKERS} workers`;
-      document.title = `${title} - ffmpeg-render-pro`;
+      pageTitle = title;
+      if (!renderComplete && !renderFailed) document.title = `${title} - ffmpeg-render-pro`;
 
       if (global.phase) updatePhaseStrip(global.phase, global.phaseDetail);
 
@@ -796,6 +869,9 @@ async function poll() {
       }
     }
   } catch(e) {}
+
+  // Terminal failure: leave the error UI in place, stop updating stats.
+  if (renderFailed) return;
 
   if (NUM_WORKERS === 0) return;
 
@@ -867,6 +943,11 @@ async function poll() {
     overallPct < 1 ? 'Starting...' : Math.round(overallPct) + '% - ' + totalFps.toFixed(1) + ' fps';
   document.getElementById('worker-sub').textContent = activeWorkers + ' active';
 
+  // Live percent in the tab title so a backgrounded tab still informs.
+  if (!renderComplete) {
+    document.title = Math.round(overallPct) + '% - ' + pageTitle;
+  }
+
   if (totalFps > 0) {
     document.getElementById('status-text').textContent = 'Rendering...';
     document.getElementById('live-dot').classList.remove('waiting');
@@ -903,6 +984,7 @@ async function poll() {
     document.getElementById('eta-sub').textContent = formatTime(finalElapsed) + ' total';
     document.getElementById('total-fps').textContent = (TOTAL_FRAMES / finalElapsed).toFixed(1);
     document.getElementById('fps-sub').textContent = 'average';
+    document.title = 'Done - ' + pageTitle;
     // Mark any remaining workers as done visually
     for (let i = 0; i < NUM_WORKERS; i++) {
       const fill = document.getElementById(`w${i}-fill`);
