@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "ffmpeg-render-pro",
   "version": "1.5.0",
   "description": "Parallel video rendering with live dashboard, GPU auto-detection, checkpoint system, and stream-copy concat. Includes an MCP server, a Claude Code skill, and a CLI.",
