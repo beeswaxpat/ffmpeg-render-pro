@@ -3,6 +3,20 @@
 All notable changes to `ffmpeg-render-pro` are documented in this file.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+Packaging and presentation only. No runtime code changed, so nothing here affects the published package.
+
+### Added
+
+- **`Dockerfile` and `.dockerignore`.** node:20-slim plus ffmpeg, production dependencies only, non-root, with the stdio MCP server as the entrypoint. Run it with `docker run -i --rm ffmpeg-render-pro`.
+- **`Docker` CI workflow.** Builds the image, checks ffmpeg and ffprobe are on PATH, then drives a real MCP handshake through the container and asserts all seven tools come back over stdio.
+- **`tools/gen-banner.mjs`.** Renders `assets/banner.txt` to `assets/banner.svg`.
+
+### Changed
+
+- **The README banner is now an SVG instead of a fenced ASCII block.** Terminals and GitHub scroll a 58-column box; directory sites wrap it, and the art came apart on narrow screens. Block characters become merged rects so the letterforms do not depend on the viewer's monospace font, and the cell grid is drawn deliberately rather than falling out of abutting rects, so it looks the same at every scale. The ASCII original remains at `assets/banner.txt`.
+
 ## [1.5.0] - 2026-07-16
 
 A reliability and agent-integration pass. Fully backward-compatible: every CLI flag, API signature, MCP tool name, worker contract, and checkpoint file format from 1.4.x works unchanged; all changes are additive.
