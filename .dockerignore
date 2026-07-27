@@ -1,0 +1,32 @@
+# The image installs its own dependencies; never ship the host tree's.
+node_modules/
+
+.git/
+.github/
+.claude/
+
+# Tests and their scratch output are not part of the runtime image.
+test/
+
+# Render artifacts and generated state, same set the .gitignore blocks.
+preview/
+.parallel-temp/
+.ffmpeg-render-pro/
+.checkpoints/
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.webm
+*.mp3
+*.wav
+*.aac
+*.log
+
+# Docs that are not read at runtime.
+CHANGELOG.md
+glama.json
+server.json
+
+Dockerfile
+.dockerignore

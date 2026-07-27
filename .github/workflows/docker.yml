@@ -1,0 +1,76 @@
+name: Docker
+
+# Builds the container image and proves the MCP server actually answers
+# JSON-RPC inside it. Directory listings host this image and run their own
+# build test before a server can be released, so a broken Dockerfile is a
+# distribution failure, not just a local one.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'src/**'
+      - 'bin/**'
+      - 'examples/**'
+      - '.github/workflows/docker.yml'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: build and handshake
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t ffmpeg-render-pro:ci .
+
+      - name: ffmpeg and ffprobe are on PATH
+        run: |
+          docker run --rm --entrypoint ffmpeg ffmpeg-render-pro:ci -version | head -1
+          docker run --rm --entrypoint ffprobe ffmpeg-render-pro:ci -version | head -1
+
+      - name: MCP stdio handshake and tools/list
+        run: |
+          {
+            printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0.0.0"}}}'
+            sleep 2
+            printf '%s\n' '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+            printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+            sleep 3
+          } | docker run -i --rm ffmpeg-render-pro:ci > handshake.json
+
+          echo "--- server output ---"
+          cat handshake.json
+          echo "---------------------"
+
+          for expected in \
+            '"serverInfo"' \
+            '"name":"ffmpeg-render-pro"' \
+            '"detect_gpu"' \
+            '"system_info"' \
+            '"render_video"' \
+            '"get_worker_template"' \
+            '"color_grade"' \
+            '"merge_audio"' \
+            '"concat_videos"'
+          do
+            if ! grep -qF "$expected" handshake.json; then
+              echo "missing from MCP response: $expected"
+              exit 1
+            fi
+          done
+
+          if grep -qF '"error"' handshake.json; then
+            echo "MCP response contained an error object"
+            exit 1
+          fi
+
+          echo "handshake OK: 7 tools advertised over stdio"
