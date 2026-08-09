@@ -109,6 +109,27 @@ Flag validation: an unknown flag prints a warning on stderr and execution contin
 
 Installed binaries: `ffmpeg-render-pro` (this CLI) and `ffmpeg-render-pro-mcp` (the MCP server). A legacy `ffmpeg-render-mcp` alias for the MCP server also exists and is kept permanently so older MCP configs never break.
 
+## NVENC Quick Reference
+
+The renderer auto-detects NVENC on its own. For one-off encodes outside the renderer, these are the two commands to know.
+
+Confirm NVENC is present before you rely on it. If the encoder is not built into your ffmpeg, it errors with `Unknown encoder 'h264_nvenc'`, and without this probe you find that out an hour into a render:
+
+```bash
+ffmpeg -encoders | grep nvenc
+ffmpeg -y -f lavfi -i testsrc=size=256x256:rate=30:d=1 -c:v h264_nvenc -cq 23 probe.mp4
+```
+
+GPU encode with `h264_nvenc`. Presets run `p1` (fastest) to `p7` (best quality); `-cq` is the quality target, same direction as CRF, lower is better:
+
+```bash
+ffmpeg -i in.mp4 -c:v h264_nvenc -preset p5 -cq 21 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart out.mp4
+```
+
+One trap worth knowing: `h264_nvenc` refuses very narrow frames (measured minimum width 145px on a Turing card; other generations may sit elsewhere) by writing a zero-byte output file and exiting, which a "did the output file get created" check reads as success. Keeping capability probes at 256x256 sidesteps the whole question.
+
+Both commands above are from the [ffmpeg Render Cookbook](https://store.chronoverify.com/l/ffmpeg-render-cookbook?utm_source=npm&utm_medium=npm&utm_campaign=ffmpeg-render-cookbook) ($12): 29 copy-paste recipes, every one executed on ffmpeg 8.0.1 before publication, covering NVENC, YouTube export, loudness normalization, parallel rendering, and HDR tone mapping, each with the failure it prevents.
+
 ## API
 
 ```js

@@ -3,11 +3,13 @@
 All notable changes to `ffmpeg-render-pro` are documented in this file.
 This project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.5.1] - 2026-08-08
 
-Packaging and presentation only. No runtime code changed, so nothing here affects the published package.
+Packaging and presentation only. No runtime code changed.
 
 ### Added
+
+- **README: NVENC Quick Reference.** The capability probe, the `h264_nvenc` encode command, and the 145px zero-byte trap, lifted from the ffmpeg Render Cookbook with a link to it.
 
 - **`Dockerfile` and `.dockerignore`.** node:20-slim plus ffmpeg, production dependencies only, non-root, with the stdio MCP server as the entrypoint. Run it with `docker run -i --rm ffmpeg-render-pro`.
 - **`Docker` CI workflow.** Builds the image, checks ffmpeg and ffprobe are on PATH, then drives a real MCP handshake through the container and asserts all seven tools come back over stdio.
