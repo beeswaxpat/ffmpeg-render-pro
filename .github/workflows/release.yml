@@ -1,0 +1,118 @@
+name: Release
+
+# One tag push publishes everywhere, with no long-lived tokens anywhere:
+#
+#   1. npm: trusted publishing (OIDC). npmjs.com is configured to accept
+#      publishes only from THIS workflow file in THIS repository. Each run
+#      gets a short-lived, signed token that cannot be copied or reused, and
+#      npm attaches a provenance attestation linking the tarball to the
+#      exact commit and workflow run. Requires npm CLI >= 11.5.1 and
+#      Node >= 22.14 on the runner.
+#   2. MCP Registry: publishes server.json using GitHub OIDC, AFTER the npm
+#      job succeeds, because the registry verifies the published package's
+#      mcpName field against the npm registry.
+#
+# Trigger: git tag v1.5.2 && git push origin v1.5.2 (the tag must match
+# package.json exactly, or the run stops before publishing anything).
+# workflow_dispatch reruns only the registry step for an already-published
+# version (for example after a registry-side failure).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  npm:
+    name: publish to npm (trusted publishing)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      id-token: write # OIDC token for npm trusted publishing + provenance
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Toolchain meets the trusted-publishing floor (npm >= 11.5.1)
+        run: |
+          node --version
+          npm --version
+          node -e "const [a,b,c]=process.versions.node.split('.').map(Number); if (a<22||(a===22&&b<14)) { console.error('Node >= 22.14 required'); process.exit(1) }"
+          node -e "const v=require('child_process').execSync('npm --version').toString().trim().split('.').map(Number); if (v[0]<11||(v[0]===11&&(v[1]<5||(v[1]===5&&v[2]<1)))) { console.error('npm >= 11.5.1 required, got '+v.join('.')); process.exit(1) }"
+
+      - name: Tag matches package.json and server.json
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          SRV="$(node -p "require('./server.json').version")"
+          SRVPKG="$(node -p "require('./server.json').packages[0].version")"
+          echo "tag=$TAG package.json=$PKG server.json=$SRV server.json.packages[0]=$SRVPKG"
+          [ "$TAG" = "$PKG" ] || { echo "tag $TAG does not match package.json $PKG"; exit 1; }
+          [ "$TAG" = "$SRV" ] || { echo "tag $TAG does not match server.json version $SRV"; exit 1; }
+          [ "$TAG" = "$SRVPKG" ] || { echo "tag $TAG does not match server.json packages[0].version $SRVPKG"; exit 1; }
+
+      # ffmpeg so prepublishOnly (npm test) runs the real render and MCP
+      # suites as a release gate instead of skipping them.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        run: npm ci
+
+      # No token: npm exchanges the workflow's OIDC token for a short-lived
+      # publish credential. Provenance is generated automatically for a
+      # public repo publishing a public package.
+      - name: Publish
+        run: npm publish
+
+      - name: Published version is live on the registry
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          for i in 1 2 3 4 5 6; do
+            LIVE="$(npm view ffmpeg-render-pro@"$TAG" version 2>/dev/null || true)"
+            [ "$LIVE" = "$TAG" ] && { echo "npm has $LIVE"; exit 0; }
+            sleep 10
+          done
+          echo "npm did not report $TAG after 60s"; exit 1
+
+  mcp-registry:
+    name: publish to MCP Registry (OIDC)
+    needs: [npm]
+    # Run after a successful npm publish, or on manual dispatch (where the
+    # npm job is skipped by design).
+    if: always() && (needs.npm.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write # required for OIDC
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install mcp-publisher (pinned, checksum-verified)
+        env:
+          # Pinned release of modelcontextprotocol/registry; sha256 is for
+          # mcp-publisher_linux_amd64.tar.gz from that release's checksums.txt.
+          # Bump both together when upgrading.
+          MCP_PUBLISHER_VERSION: v1.8.0
+          MCP_PUBLISHER_SHA256: 1370446bbe74d562608e8005a6ccce02d146a661fbd78674e11cc70b9618d6cf
+        run: |
+          curl -fsSL -o mcp-publisher.tar.gz "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+
+      - name: Authenticate to MCP Registry (GitHub OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server.json to MCP Registry
+        run: ./mcp-publisher publish

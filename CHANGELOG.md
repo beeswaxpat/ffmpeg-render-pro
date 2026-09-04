@@ -21,6 +21,7 @@ Dependency hygiene, four small fixes, and a shorter path to a first render. Full
 - **`get_worker_template` returns `starterPath` and `starterSource`** alongside the existing `templatePath` and `templateSource`, and its text now opens with the copy-and-edit-renderFrame recipe. Additive: existing fields are unchanged.
 - The CLI help text opens with a three-command "Start here" block.
 - CI matrix adds Node 24.
+- **npm trusted publishing.** A tag push now publishes to npm from GitHub Actions through OIDC (`.github/workflows/release.yml`), with no publish token anywhere and a provenance attestation on every release. The workflow refuses to publish when the tag does not match `package.json` and `server.json`, runs the full test suite with real ffmpeg as the gate, and then publishes `server.json` to the MCP Registry in a second job that waits for npm to confirm the version. This replaces `publish-mcp.yml`.
 
 ### Changed
 

@@ -241,6 +241,7 @@ ffmpeg -i in.mp4 -c:v h264_nvenc -preset p5 -cq 21 -pix_fmt yuv420p -c:a aac -b:
 
 ## Security notes
 
+- Releases are published to npm by GitHub Actions through npm trusted publishing (OIDC). There is no publish token, and every version from 1.5.2 on carries a provenance attestation that ties the tarball on npm to the exact commit and workflow run that built it (see the Provenance panel on the npm page).
 - The dashboard binds to `127.0.0.1` only and loads nothing from the network. No telemetry.
 - `render_video` and `renderParallel` execute the worker script you name with the privileges of the current user. Only run workers you wrote or trust.
 - The MCP server reads and writes files anywhere the current user can. Run it with a trusted agent, and consider restricting its working directory when prompts are untrusted.
