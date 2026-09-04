@@ -277,6 +277,25 @@ async function main() {
       assert.strictEqual(probeVideo(cliOut).frames, 8, '0.8s @ 10fps = 8 frames');
     });
 
+    await step('CLI init then render: the starter worker renders the exact frame count', () => {
+      const bin = path.join(ROOT, 'bin', 'ffmpeg-render-pro.js');
+      const initDir = path.join(tmp, 'init');
+      fs.mkdirSync(initDir, { recursive: true });
+      const init = spawnSync('node', [bin, 'init'], { encoding: 'utf-8', timeout: 15000, cwd: initDir });
+      assert.strictEqual(init.status, 0, `init exited ${init.status}: ${init.stderr}`);
+      const worker = path.join(initDir, 'my-worker.js');
+      assert.ok(fs.existsSync(worker), 'my-worker.js written by init');
+      const out = path.join(initDir, 'starter.mp4');
+      const r = spawnSync('node', [
+        bin, 'render', worker, `--output=${out}`, '--width=320', '--height=240',
+        '--fps=10', '--duration=0.6', '--workers=2', '--no-dashboard',
+      ], { encoding: 'utf-8', timeout: 120000, cwd: initDir });
+      assert.strictEqual(r.status, 0, `render exited ${r.status}: ${r.stderr}`);
+      const info = probeVideo(out);
+      assert.strictEqual(info.frames, 6, '0.6s @ 10fps = 6 frames');
+      assert.strictEqual(info.codec, 'h264');
+    });
+
     // --- 8. Worker codecArgs override ---
     await step('workerData.codecArgs overrides the segment encoder', async () => {
       const outCrf = path.join(tmp, 'crf0.mp4');

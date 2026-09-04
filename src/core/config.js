@@ -116,7 +116,7 @@ function getConfig(options = {}) {
 
   const auto = getOptimalWorkers({ width, height });
   const workers = workerCount || auto.workers;
-  const totalFrames = fps * duration;
+  const totalFrames = computeTotalFrames(fps, duration);
   const framesPerWorker = Math.ceil(totalFrames / workers);
 
   // For parallel segments: always use CPU (GPU session limits).

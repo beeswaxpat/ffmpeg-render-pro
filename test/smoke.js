@@ -172,6 +172,36 @@ async function main() {
     await assert.rejects(() => lib.colorGrade({ inputPath: 'i.mp4', outputPath: 'o.mp4' }), /No filter provided/);
   });
 
+  // --- colorGrade argv composition (no ffmpeg spawned) ---
+  {
+    const { buildColorGradeArgs, PRESETS } = require('../src/core/color-grade.js');
+    const base = { inputPath: 'in.mp4', outputPath: 'out.mp4', crf: 18, cq: 18, encoderPreset: 'medium', keepAudio: false };
+    const countVf = (args) => args.filter((a) => a === '-vf').length;
+    const vfOf = (args) => args[args.indexOf('-vf') + 1];
+
+    test('colorGrade libx264 argv: one -vf carrying the grade, historical shape', () => {
+      const args = buildColorGradeArgs({ ...base, filterChain: PRESETS.noir, codec: 'libx264' });
+      assert.strictEqual(countVf(args), 1);
+      assert.strictEqual(vfOf(args), PRESETS.noir);
+      assert.deepStrictEqual(args.slice(0, 3), ['-y', '-i', 'in.mp4']);
+      assert.ok(args.includes('-an'), 'default strips audio');
+      assert.strictEqual(args[args.length - 1], 'out.mp4');
+    });
+    test('colorGrade VA-API argv: grade and hwupload merged into ONE -vf (regression: grade was dropped)', () => {
+      const args = buildColorGradeArgs({ ...base, filterChain: PRESETS.warm, codec: 'h264_vaapi' });
+      assert.strictEqual(countVf(args), 1, 'exactly one -vf');
+      assert.strictEqual(vfOf(args), `${PRESETS.warm},format=nv12,hwupload`);
+      const initIdx = args.indexOf('-init_hw_device');
+      assert.ok(initIdx !== -1 && initIdx < args.indexOf('-i'), 'device init precedes -i');
+      assert.ok(args.includes('h264_vaapi'));
+    });
+    test('colorGrade keepAudio argv maps video + optional audio with stream copy', () => {
+      const args = buildColorGradeArgs({ ...base, filterChain: 'eq=contrast=1.1', codec: 'libx264', keepAudio: true });
+      assert.ok(!args.includes('-an'));
+      assert.ok(args.includes('0:a?') && args.includes('copy'));
+    });
+  }
+
   // --- Backward-compat guard: every 1.3.x export must still exist ---
   test('all v1.3.x exports are still present', () => {
     const expected = [

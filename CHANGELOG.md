@@ -3,6 +3,33 @@
 All notable changes to `ffmpeg-render-pro` are documented in this file.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [1.5.2] - 2026-09-04
+
+Dependency hygiene, four small fixes, and a shorter path to a first render. Fully backward-compatible: every CLI flag, API signature, MCP tool name, worker contract, and checkpoint file format from 1.5.x works unchanged.
+
+### Fixed
+
+- **`npm audit` is clean on install.** The pinned MCP SDK (1.29.0) pulled in seven advisories (three high) through its HTTP transport dependencies, code this stdio server never runs but every `npm install` reported. `@modelcontextprotocol/sdk` moves to `^1.30.0` and `zod` to `^3.25.76` (the SDK's peer range); the tree now audits to zero.
+- **`renderParallel({ quiet: true })` is byte-clean on stdout with the dashboard on.** The dashboard URL box bypassed quiet mode because `silent` was never passed through to `startDashboard`. The URL is now announced on stderr instead. The MCP server was unaffected (it remaps console output before loading anything); library callers were.
+- **The post-render output check honors `FFMPEG_RENDER_PRO_FFPROBE`.** It spawned a literal `ffprobe` from PATH, so installs using the env-var override silently skipped the check.
+- **`colorGrade` with a VA-API codec keeps the grade.** The encoder's required `format=nv12,hwupload` filter is now merged into the grade chain as one `-vf`; previously ffmpeg kept only the encoder's filter and dropped the grade. Output for every other codec is unchanged. `buildColorGradeArgs` is exported from the module for tests.
+- `getConfig()` uses the float-safe `computeTotalFrames()` like the renderer does.
+
+### Added
+
+- **`ffmpeg-render-pro init [my-worker.js]`** writes a starter worker into the current folder and prints the next two commands. The starter (`examples/starter-worker.js`) is a short file where only `renderFrame(frameNum, buffer)` needs editing; the ffmpeg pipe, backpressure, progress, and done/error plumbing are already there. `--force` overwrites. Works before ffmpeg is installed.
+- **`get_worker_template` returns `starterPath` and `starterSource`** alongside the existing `templatePath` and `templateSource`, and its text now opens with the copy-and-edit-renderFrame recipe. Additive: existing fields are unchanged.
+- The CLI help text opens with a three-command "Start here" block.
+- CI matrix adds Node 24.
+
+### Changed
+
+- **README rewritten around getting to a first render**: a three-command start, the worker contract as two tables instead of a 75-line inline script (`init` gives you the file), one MCP install method per client, and no duplicated changelog or test-file listing. About 1,900 words, down from 4,000. `llms.txt` follows the same shape.
+
+### Tests
+
+- 241 checks grew to 255: `init` (copy, refuse-overwrite, `--force`, nested dirs, end-to-end), quiet mode with the dashboard on, VA-API grade argv composition, an end-to-end `init` then `render` of the starter worker with an exact frame count, and the new `get_worker_template` fields.
+
 ## [1.5.1] - 2026-08-08
 
 Packaging and presentation only. No runtime code changed.

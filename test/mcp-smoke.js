@@ -196,6 +196,9 @@ function main() {
       }
       if (!fs.existsSync(tmplSc.templatePath)) throw new Error('get_worker_template templatePath does not exist: ' + tmplSc.templatePath);
       if (!tmplSc.templateSource.includes('parentPort.postMessage')) throw new Error('get_worker_template templateSource does not look like a worker script');
+      if (!fs.existsSync(tmplSc.starterPath)) throw new Error('get_worker_template starterPath does not exist: ' + tmplSc.starterPath);
+      if (!tmplSc.starterSource.includes('function renderFrame(')) throw new Error('get_worker_template starterSource is missing renderFrame');
+      if (tmplSc.starterPath === tmplSc.templatePath) throw new Error('starterPath and templatePath must be different files');
       const tmplText = tmpl.result.content.map(c => c.text).join('\n');
       if (!tmplText.includes('segmentPath') || !tmplText.includes('startFrame')) throw new Error('get_worker_template text missing contract fields');
       pass('get_worker_template (contract + bundled source, ' + tmplSc.templateSource.length + ' chars)');

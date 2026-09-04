@@ -1,72 +1,77 @@
 # ffmpeg-render-pro
 
-ffmpeg-render-pro is a Node.js toolkit for parallel video rendering: it splits a frame
-range across worker threads, encodes one MP4 segment per worker via ffmpeg, and joins
-the segments with stream copy (no re-encode). It includes cross-platform GPU encoder
-detection (NVENC, VideoToolbox, AMF, VA-API, QSV), a live localhost dashboard, a
-checkpoint system for long renders, color grading and audio merge helpers, a CLI, and
-an MCP (Model Context Protocol) stdio server. Requires Node.js >= 18 and ffmpeg
-(on PATH, or pointed to via FFMPEG_RENDER_PRO_FFMPEG). Version 1.5.0. MIT license.
+ffmpeg-render-pro is a Node.js toolkit that renders video from code in parallel. The user
+(or agent) writes one function, renderFrame(frameNum, buffer), that paints raw BGRA pixels;
+the toolkit splits the frame range across worker threads, encodes one MP4 segment per worker
+through ffmpeg, joins the segments with stream copy (no re-encode), and serves a live
+dashboard on 127.0.0.1. It also detects GPU encoders (NVENC, VideoToolbox, AMF, VA-API, QSV),
+grades color, merges audio, and concatenates videos. Requires Node.js >= 18 and ffmpeg (on
+PATH, or via FFMPEG_RENDER_PRO_FFMPEG). Version 1.5.2. MIT license.
+
+## The three-step path (humans and agents)
+
+1. Prove the setup: `npx ffmpeg-render-pro benchmark` (5 s test render, dashboard opens).
+2. Get a worker: `npx ffmpeg-render-pro init my-worker.js`, or over MCP call get_worker_template
+   and save its `starterSource` to a file. Edit renderFrame() only.
+3. Render: `npx ffmpeg-render-pro render my-worker.js --duration=5`, or over MCP call
+   render_video with worker_script set to that file.
+
+Both bundled workers can be rendered as-is: starter-worker.js (gradient, edit-me file) and
+basic-worker.js (particle test scene). get_worker_template returns both paths.
 
 ## Install
 
-- npm (global CLI + MCP binary): `npm install -g ffmpeg-render-pro`
-- npm (library): `npm install ffmpeg-render-pro`
-- Claude Code MCP: `claude mcp add --transport stdio ffmpeg-render-pro -- ffmpeg-render-pro-mcp`
-- Claude Code MCP without global install: `claude mcp add --transport stdio ffmpeg-render-pro -- npx --yes --package=ffmpeg-render-pro ffmpeg-render-pro-mcp`
+- No install: `npx ffmpeg-render-pro <command>`
+- Global CLI + MCP binary: `npm install -g ffmpeg-render-pro`
+- Library: `npm install ffmpeg-render-pro`
+- Claude Code MCP: `claude mcp add --transport stdio ffmpeg-render-pro -- npx --yes --package=ffmpeg-render-pro ffmpeg-render-pro-mcp`
 
 ## MCP tools (7)
 
-- detect_gpu: probe the best hardware video encoder on this machine (each call re-probes and refreshes a 7-day cache that system_info reads)
-- system_info: CPU cores, RAM, recommended worker count for a resolution, ffmpeg version
-- render_video: parallel render from a worker script; progress notifications + cancellation
-- get_worker_template: the worker contract plus bundled reference worker source (templatePath is directly usable as worker_script)
-- color_grade: apply a preset (noir, warm, cool, cinematic, vintage) or custom -vf filter
-- merge_audio: mux an audio file into a video (video stream-copied, audio AAC)
-- concat_videos: stream-copy join videos; ffprobe compatibility validation on by default
+- get_worker_template: worker contract + starterSource/starterPath (edit renderFrame only) + templatePath (reference scene). Call first.
+- render_video: parallel render from worker_script; duration required; fps default 30; progress notifications when the client sends a progressToken; client cancellation stops workers.
+- detect_gpu: probe the best hardware encoder (re-probes each call, 7-day cache).
+- system_info: CPU cores, RAM, recommended worker count for a resolution, ffmpeg version.
+- color_grade: preset (noir, warm, cool, cinematic, vintage) or custom -vf filter.
+- merge_audio: mux audio into video, video stream-copied, audio AAC, optional loop and loudnorm.
+- concat_videos: stream-copy join; inputs probed with ffprobe by default.
 
-All tools return structuredContent matching a declared outputSchema, so parse JSON
-instead of scraping text. Writers overwrite output_path. render_video defaults to
-30 fps (the CLI render command defaults to 60). stdout carries only JSON-RPC frames.
+All tools return structuredContent matching a declared outputSchema. Writers overwrite output_path.
+stdout carries only JSON-RPC frames. For headless renders pass dashboard false and auto_open false.
 
-## CLI quickstart
+## CLI
 
-- `ffmpeg-render-pro info` (system snapshot)
-- `ffmpeg-render-pro detect-gpu` (probe hardware encoders; --cpu / --gpu force modes)
-- `ffmpeg-render-pro benchmark --duration=5` (test render with the bundled worker)
-- `ffmpeg-render-pro render worker.js --duration=60 --output=out.mp4 --crf=18 --encoder-preset=slow`
-- Headless: add `--no-dashboard --linger-ms=0`
+- `init [my-worker.js]` (--force overwrites), `benchmark`, `render <worker.js>`, `info`, `detect-gpu`, `version`
+- Render flags: --width --height (even) --fps --duration --output --workers --max-workers --seed --title --crf --encoder-preset
+- Dashboard flags: --no-dashboard --no-open --port --linger-ms (0 = exit when done)
 
-## Worker contract (render_video / renderParallel)
+## Worker contract
 
-A worker script runs as a Node worker_thread. workerData fields injected:
-width, height, fps, seed, startFrame, endFrame (exclusive), segmentPath, workerId,
-totalFrames, duration, plus any extra keys passed via renderParallel({ workerData }).
-The worker must render frames [startFrame, endFrame), encode them to an MP4 at
-segmentPath (the reference worker pipes raw BGRA to ffmpeg), and post messages:
+A worker runs as a worker_thread. workerData injects: width, height, fps, seed, startFrame,
+endFrame (exclusive), segmentPath, workerId, totalFrames, duration, plus any extra keys from
+renderParallel({ workerData }). The worker renders [startFrame, endFrame) to an MP4 at
+segmentPath and posts to parentPort:
 
 - { type: 'progress', workerId, pct, fps, frame, eta } periodically
-- { type: 'done', workerId } exactly once when the segment is fully written
+- { type: 'done', workerId } once, after the segment is fully written
 - { type: 'error', workerId, error } on failure (never done after error)
-- { type: 'fast-forward-start', workerId, frames } optional, before state replay
+- { type: 'fast-forward-start', workerId, frames } optional, before replaying state
 
-All segments must share codec, resolution, framerate, and pixel format (they are
-stream-copy concatenated). Deterministic output requires deriving all randomness
-from the injected seed.
+All segments must share codec, resolution, framerate, and pixel format. Derive all randomness
+from seed for deterministic output.
 
-## Library entry points
+## Library
 
-require('ffmpeg-render-pro') exports: renderParallel, createEncoder, detectGPU,
-getConfig, computeTotalFrames, concatSegments, colorGrade, mergeAudio,
-startDashboard, ProgressTracker, saveCheckpoint, loadCheckpoint, restoreCheckpoint,
-generateCheckpoints, getEncoderIO, getCodecArgs, ffmpegBin, ffprobeBin, and more.
-renderParallel options include signal (AbortSignal) and quiet (byte-clean stdout).
+require('ffmpeg-render-pro') exports renderParallel, createEncoder, detectGPU, getConfig,
+computeTotalFrames, concatSegments, colorGrade, mergeAudio, startDashboard, ProgressTracker,
+saveCheckpoint, loadCheckpoint, restoreCheckpoint, generateCheckpoints, getEncoderIO,
+getCodecArgs, ffmpegBin, ffprobeBin. renderParallel options include signal (AbortSignal),
+quiet (byte-clean stdout), and dashboardLingerMs (0 to return immediately).
 
 ## Links
 
 - README: https://github.com/beeswaxpat/ffmpeg-render-pro#readme
 - CHANGELOG: https://github.com/beeswaxpat/ffmpeg-render-pro/blob/main/CHANGELOG.md
-- Claude Code skill (ships in the npm tarball): .claude/skills/ffmpeg-render-pipeline/SKILL.md
+- Claude Code skill (in the tarball): .claude/skills/ffmpeg-render-pipeline/SKILL.md
 - MCP Registry name: io.github.beeswaxpat/ffmpeg-render-pro
 - npm: https://www.npmjs.com/package/ffmpeg-render-pro
-- GitHub: https://github.com/beeswaxpat/ffmpeg-render-pro

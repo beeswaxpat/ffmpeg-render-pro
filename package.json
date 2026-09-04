@@ -1,6 +1,6 @@
 {
   "name": "ffmpeg-render-pro",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Parallel video rendering with live dashboard, GPU auto-detection, checkpoint system, and stream-copy concat. Includes an MCP server, a Claude Code skill, and a CLI.",
   "mcpName": "io.github.beeswaxpat/ffmpeg-render-pro",
   "main": "src/index.js",
@@ -71,7 +71,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "zod": "^3.24.4"
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.25.76"
   }
 }

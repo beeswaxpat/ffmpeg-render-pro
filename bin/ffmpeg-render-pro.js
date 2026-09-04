@@ -9,6 +9,7 @@
  *   benchmark         Run a quick benchmark render (5s test video)
  */
 const path = require('path');
+const fs = require('fs');
 const { detectGPU, checkFFmpeg } = require('../src/core/gpu-detect');
 const { getOptimalWorkers, getConfig } = require('../src/core/config');
 const { renderParallel } = require('../src/core/parallel-renderer');
@@ -90,6 +91,7 @@ const QUALITY_FLAGS = ['crf', 'encoder-preset'];
 const ENCODER_MODE_FLAGS = ['cpu', 'cpu-only', 'gpu', 'gpu-only'];
 
 const KNOWN_FLAGS = {
+  'init': new Set(['force']),
   'detect-gpu': new Set(ENCODER_MODE_FLAGS),
   'info': new Set(ENCODER_MODE_FLAGS),
   'render': new Set(['width', 'height', 'fps', 'duration', 'output', 'workers',
@@ -175,11 +177,51 @@ function buildCodecArgs(flags) {
 }
 
 const VERSION_COMMANDS = new Set(['version', '--version', '-v']);
+const STARTER_WORKER = path.join(__dirname, '..', 'examples', 'starter-worker.js');
+const DEFAULT_INIT_NAME = 'my-worker.js';
+
+/**
+ * Write the starter worker to `target`. Refuses to overwrite an existing
+ * file unless `force` is set. Returns the absolute path written.
+ * Exported for tests.
+ */
+function writeStarterWorker(target, { force = false } = {}) {
+  const dest = path.resolve(target);
+  if (fs.existsSync(dest) && !force) {
+    throw new Error(`${dest} already exists. Pick another name or pass --force to overwrite it.`);
+  }
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(STARTER_WORKER, dest);
+  return dest;
+}
 
 async function main() {
   // Version is answerable without ffmpeg installed.
   if (VERSION_COMMANDS.has(command)) {
     console.log(require('../package.json').version);
+    return;
+  }
+
+  // init only copies a file, so it works before ffmpeg is installed.
+  if (command === 'init') {
+    const flags = parseFlags(args.slice(1));
+    reportFlagIssues('init', flags);
+    const target = args[1] && !args[1].startsWith('--') ? args[1] : DEFAULT_INIT_NAME;
+    const dest = writeStarterWorker(target, { force: flags.force === true });
+    const shown = path.relative(process.cwd(), dest) || dest;
+    console.log('');
+    console.log(`  Wrote ${dest}`);
+    console.log('');
+    console.log('  Next:');
+    console.log(`    1. Open ${shown} and edit renderFrame(). That is the only function you need.`);
+    console.log(`    2. ffmpeg-render-pro render ${shown} --duration=5`);
+    console.log('       (the live dashboard opens in your browser; output lands in output.mp4)');
+    console.log('');
+    const status = checkFFmpeg();
+    if (!status.available) {
+      console.log(`  Note: ${status.error}`);
+      console.log('');
+    }
     return;
   }
 
@@ -303,11 +345,18 @@ async function main() {
       console.log(`
   ffmpeg-render-pro - Parallel video rendering toolkit
 
+  Start here (three commands):
+    ffmpeg-render-pro benchmark             Prove the setup: a 5s test render, dashboard opens
+    ffmpeg-render-pro init my-worker.js     Write a starter worker; edit its renderFrame()
+    ffmpeg-render-pro render my-worker.js --duration=5
+                                            Render your frames to output.mp4
+
   Commands:
-    detect-gpu                Probe available hardware encoders
-    info                      Show system config (workers, RAM, CPU)
+    init [my-worker.js]       Write the starter worker script (--force overwrites)
+    benchmark                 Quick 5s test render with the bundled worker
     render <worker.js>        Run a render with the given worker script
-    benchmark                 Quick 5s test render
+    info                      Show system config (workers, RAM, CPU, ffmpeg)
+    detect-gpu                Probe available hardware encoders
     version                   Print the installed version
 
   Render options:
@@ -346,6 +395,7 @@ async function main() {
     --workers=8               Override worker count
 
   Examples:
+    ffmpeg-render-pro init
     ffmpeg-render-pro detect-gpu
     ffmpeg-render-pro detect-gpu --cpu
     ffmpeg-render-pro info
@@ -365,6 +415,8 @@ module.exports = {
   parseFlags,
   validateFlags,
   buildCodecArgs,
+  writeStarterWorker,
+  STARTER_WORKER,
   safeInt,
   safeNum,
   safeSeed,

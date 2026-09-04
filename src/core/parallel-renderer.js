@@ -27,6 +27,7 @@ const { getOptimalWorkers, planWorkers, computeTotalFrames } = require('./config
 const { ProgressTracker } = require('./progress');
 const { startDashboard } = require('./dashboard-server');
 const { checkFFmpeg, validateResolution } = require('./gpu-detect');
+const { ffprobeBin } = require('./ffmpeg-bin');
 
 const STALE_TEMP_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -72,7 +73,7 @@ function sweepStaleTempDirs(outputDir) {
 function verifyOutput(outputPath, totalFrames, fps) {
   let result;
   try {
-    result = spawnSync('ffprobe', [
+    result = spawnSync(ffprobeBin(), [
       '-v', 'error',
       '-select_streams', 'v:0',
       '-show_entries', 'stream=nb_frames',
@@ -260,9 +261,13 @@ async function renderParallel(options) {
         dir: outputDir,
         port: dashboardPort,
         autoOpen,
+        // quiet promises a byte-clean stdout; the dashboard URL box must not
+        // bypass that promise, so it is silenced and re-announced via say().
+        silent: quiet,
       });
+      if (quiet && dashboardHandle) say(`  Dashboard: ${dashboardHandle.url}`);
     } catch (err) {
-      console.warn('  Warning: could not start dashboard:', err.message);
+      say(`  Warning: could not start dashboard: ${err.message}`);
     }
   }
 

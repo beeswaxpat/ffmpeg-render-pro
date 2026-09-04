@@ -197,6 +197,69 @@ test('version command prints the package.json version and exits 0', () => {
   assert.strictEqual(result.stdout.trim(), pkg.version);
 });
 
+// --- init: starter worker scaffold ---
+const fs = require('fs');
+const os = require('os');
+const initTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'frp-cli-init-'));
+try {
+  test('STARTER_WORKER points at a shipped file that looks like a worker', () => {
+    assert.ok(fs.existsSync(cli.STARTER_WORKER), 'starter worker file exists');
+    const src = fs.readFileSync(cli.STARTER_WORKER, 'utf8');
+    assert.ok(src.includes('function renderFrame('), 'has renderFrame');
+    assert.ok(src.includes("type: 'done'"), 'posts done');
+    assert.ok(src.includes("type: 'error'"), 'posts error');
+  });
+  test('writeStarterWorker copies the starter byte-for-byte', () => {
+    const dest = cli.writeStarterWorker(path.join(initTmp, 'w.js'));
+    assert.ok(fs.readFileSync(dest).equals(fs.readFileSync(cli.STARTER_WORKER)), 'identical bytes');
+  });
+  test('writeStarterWorker refuses to overwrite without force', () => {
+    assert.throws(() => cli.writeStarterWorker(path.join(initTmp, 'w.js')), /already exists/);
+  });
+  test('writeStarterWorker overwrites with force', () => {
+    fs.writeFileSync(path.join(initTmp, 'w.js'), 'garbage');
+    cli.writeStarterWorker(path.join(initTmp, 'w.js'), { force: true });
+    assert.ok(fs.readFileSync(path.join(initTmp, 'w.js'), 'utf8').includes('renderFrame'));
+  });
+  test('writeStarterWorker creates missing parent directories', () => {
+    const dest = cli.writeStarterWorker(path.join(initTmp, 'nested', 'deep', 'w.js'));
+    assert.ok(fs.existsSync(dest));
+  });
+  test('KNOWN_FLAGS registers init with only --force', () => {
+    assert.deepStrictEqual([...cli.KNOWN_FLAGS.init], ['force']);
+  });
+  test('init command end to end: default name, next-steps text, exit 0', () => {
+    const binPath = path.join(__dirname, '..', 'bin', 'ffmpeg-render-pro.js');
+    const cwd = path.join(initTmp, 'e2e');
+    fs.mkdirSync(cwd, { recursive: true });
+    const r = spawnSync(process.execPath, [binPath, 'init'], { encoding: 'utf8', cwd });
+    assert.strictEqual(r.status, 0, `exit ${r.status}: ${r.stderr}`);
+    assert.ok(fs.existsSync(path.join(cwd, 'my-worker.js')), 'my-worker.js written');
+    assert.ok(r.stdout.includes('renderFrame'), 'tells the user which function to edit');
+    assert.ok(r.stdout.includes('render my-worker.js'), 'shows the render command');
+  });
+  test('init command with explicit path and a second run refusing overwrite (exit 1)', () => {
+    const binPath = path.join(__dirname, '..', 'bin', 'ffmpeg-render-pro.js');
+    const target = path.join(initTmp, 'custom.js');
+    const first = spawnSync(process.execPath, [binPath, 'init', target], { encoding: 'utf8' });
+    assert.strictEqual(first.status, 0, first.stderr);
+    const second = spawnSync(process.execPath, [binPath, 'init', target], { encoding: 'utf8' });
+    assert.strictEqual(second.status, 1, 'refuses overwrite');
+    assert.ok(second.stderr.includes('already exists'));
+    const forced = spawnSync(process.execPath, [binPath, 'init', target, '--force'], { encoding: 'utf8' });
+    assert.strictEqual(forced.status, 0, forced.stderr);
+  });
+  test('help text leads with the three-command start path and lists init', () => {
+    const binPath = path.join(__dirname, '..', 'bin', 'ffmpeg-render-pro.js');
+    const r = spawnSync(process.execPath, [binPath], { encoding: 'utf8' });
+    assert.strictEqual(r.status, 0);
+    assert.ok(r.stdout.includes('Start here'), 'has a Start here block');
+    assert.ok(r.stdout.includes('init [my-worker.js]'), 'lists init');
+  });
+} finally {
+  try { fs.rmSync(initTmp, { recursive: true, force: true }); } catch {}
+}
+
 // --- Summary ---
 console.log(`\n  ${passed} passed, ${failed} failed\n`);
 if (failed > 0) {

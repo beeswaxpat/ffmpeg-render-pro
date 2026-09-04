@@ -5,7 +5,7 @@
  * for common color grades.
  */
 const { spawn } = require('child_process');
-const { getCodecArgs } = require('./gpu-detect');
+const { getEncoderIO } = require('./gpu-detect');
 const { ffmpegBin } = require('./ffmpeg-bin');
 
 const STDERR_CAP = 8192;
@@ -35,6 +35,33 @@ const PRESETS = {
     "curves=m='0/0.03 0.25/0.22 0.5/0.50 0.75/0.78 1/0.95'",
   ].join(','),
 };
+
+/**
+ * Build the ffmpeg argv for a grade. Exported for tests.
+ *
+ * The encoder recipe comes from getEncoderIO so an encoder that needs its
+ * own filter (VA-API: format=nv12,hwupload) is APPENDED to the grade chain
+ * inside one -vf. Passing two -vf flags would make ffmpeg keep only the
+ * last one and silently drop the grade.
+ */
+function buildColorGradeArgs({ inputPath, outputPath, filterChain, codec, crf, cq, encoderPreset, keepAudio }) {
+  const io = getEncoderIO(codec, { crf, cq, preset: encoderPreset });
+  const vf = io.filter ? `${filterChain},${io.filter}` : filterChain;
+  return [
+    '-y',
+    ...io.inputArgs,
+    '-i', inputPath,
+    '-vf', vf,
+    ...io.outputArgs,
+    '-pix_fmt', 'yuv420p',
+    '-movflags', '+faststart',
+    // Default strips audio (the historical behavior); keepAudio stream-copies
+    // it so a graded final cut doesn't lose its soundtrack. `0:a?` makes the
+    // audio map optional, so silent inputs still grade cleanly.
+    ...(keepAudio ? ['-map', '0:v:0', '-map', '0:a?', '-c:a', 'copy'] : ['-an']),
+    outputPath,
+  ];
+}
 
 /**
  * Apply a color grade / video filter to a video file.
@@ -76,21 +103,7 @@ function colorGrade(options) {
   }
 
   return new Promise((resolve, reject) => {
-    const codecArgs = getCodecArgs(codec, { crf, cq, preset: encoderPreset });
-
-    const args = [
-      '-y',
-      '-i', inputPath,
-      '-vf', filterChain,
-      ...codecArgs,
-      '-pix_fmt', 'yuv420p',
-      '-movflags', '+faststart',
-      // Default strips audio (the historical behavior); keepAudio stream-copies
-      // it so a graded final cut doesn't lose its soundtrack. `0:a?` makes the
-      // audio map optional, so silent inputs still grade cleanly.
-      ...(keepAudio ? ['-map', '0:v:0', '-map', '0:a?', '-c:a', 'copy'] : ['-an']),
-      outputPath,
-    ];
+    const args = buildColorGradeArgs({ inputPath, outputPath, filterChain, codec, crf, cq, encoderPreset, keepAudio });
 
     const ffmpeg = spawn(ffmpegBin(), args, {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -116,4 +129,4 @@ function colorGrade(options) {
   });
 }
 
-module.exports = { colorGrade, PRESETS };
+module.exports = { colorGrade, PRESETS, buildColorGradeArgs };

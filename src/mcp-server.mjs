@@ -394,7 +394,7 @@ server.registerTool(
   'get_worker_template',
   {
     title: 'Get Worker Script Template',
-    description: 'Get the worker script contract required by render_video, plus the full source of the bundled reference worker (a procedural test scene with no dependencies). Use this before authoring a custom worker script, or pass the returned templatePath directly as render_video\'s worker_script to render the test scene. Read-only: returns documentation and source text, touches nothing.',
+    description: 'Get the worker script contract required by render_video, plus the full source of the bundled starter worker (a small file where only renderFrame() needs editing) and the path of the larger reference worker. Use this before authoring a custom worker: copy starterSource to a new file, replace renderFrame(), and pass that file as worker_script. Either templatePath (test scene) or starterPath (gradient) can be passed directly as render_video\'s worker_script to render without writing code. Read-only: returns documentation and source text, touches nothing.',
     inputSchema: {},
     outputSchema: {
       workerData: z.record(z.string()).describe('Fields injected into the worker via worker_threads workerData, mapped to their meaning'),
@@ -403,7 +403,9 @@ server.registerTool(
         fields: z.record(z.string()),
         when: z.string(),
       })).describe('Messages the worker must post to parentPort, their fields, and when to send them'),
-      templatePath: z.string().describe('Absolute path of the bundled reference worker; usable directly as render_video worker_script'),
+      starterPath: z.string().describe('Absolute path of the bundled starter worker (edit renderFrame only); usable directly as render_video worker_script'),
+      starterSource: z.string().describe('Full source code of the starter worker; copy it, replace renderFrame(), save as your worker_script'),
+      templatePath: z.string().describe('Absolute path of the bundled reference worker (particle test scene); usable directly as render_video worker_script'),
       templateSource: z.string().describe('Full source code of the bundled reference worker'),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
@@ -412,14 +414,20 @@ server.registerTool(
     try {
       const templatePath = require.resolve('../examples/basic-worker.js');
       const templateSource = fs.readFileSync(templatePath, 'utf-8');
+      const starterPath = require.resolve('../examples/starter-worker.js');
+      const starterSource = fs.readFileSync(starterPath, 'utf-8');
 
       const contractLines = [
         'render_video worker contract',
         '',
+        'Fastest path: copy the starter worker source below to a new .js file, replace its',
+        'renderFrame(frameNum, buffer) function with your own pixels, and pass that file as',
+        'render_video worker_script. The plumbing (ffmpeg pipe, progress, done/error) is done.',
+        '',
         'The worker script runs as a Node worker_thread. It must:',
         '  1. Read its assignment from workerData (fields below).',
         '  2. Render frames [startFrame, endFrame) and encode them into an MP4 at segmentPath',
-        '     (the reference worker pipes raw BGRA frames to an ffmpeg child process).',
+        '     (both bundled workers pipe raw BGRA frames to an ffmpeg child process).',
         '  3. Post progress/done/error messages to parentPort (shapes below).',
         '',
         'workerData fields injected by the renderer:',
@@ -434,7 +442,11 @@ server.registerTool(
         '  - Library callers can pass extra workerData keys via renderParallel({ workerData });',
         '    the reference worker honors workerData.codecArgs to override encoder args.',
         '',
-        `Bundled reference worker: ${templatePath}`,
+        `Starter worker (edit renderFrame only): ${starterPath}`,
+        `Reference worker (particle test scene): ${templatePath}`,
+        '',
+        '--- starter-worker.js source ---',
+        starterSource,
         '',
         '--- basic-worker.js source ---',
         templateSource,
@@ -443,6 +455,8 @@ server.registerTool(
       return okResult(contractLines.join('\n'), {
         workerData: WORKER_DATA_FIELDS,
         messages: WORKER_MESSAGES,
+        starterPath,
+        starterSource,
         templatePath,
         templateSource,
       });

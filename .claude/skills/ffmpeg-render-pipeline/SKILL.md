@@ -19,12 +19,24 @@ Before any render task, verify:
 
 ## Quick Start (for any render task)
 
+The shortest path to a first render is three commands. Use it whenever the user has no worker script yet:
+
+```bash
+# 1. Prove the setup: 5s test render, dashboard opens
+ffmpeg-render-pro benchmark
+
+# 2. Write the starter worker (only renderFrame() needs editing; --force overwrites)
+ffmpeg-render-pro init my-worker.js
+
+# 3. Render it (output.mp4)
+ffmpeg-render-pro render my-worker.js --duration=5
+```
+
+Without a global install, prefix each command with `npx` (`npx ffmpeg-render-pro init`). Over MCP the same path is `get_worker_template` (save `starterSource` to a file, edit `renderFrame`) then `render_video`.
+
 ```bash
 # Check system capabilities
 ffmpeg-render-pro info
-
-# Run a benchmark to test the setup (5s test render)
-ffmpeg-render-pro benchmark
 
 # Render a YouTube Short shape (vertical, 60s) with the bundled test worker
 ffmpeg-render-pro benchmark --width=1080 --height=1920 --fps=30 --duration=60
@@ -164,7 +176,7 @@ Workers receive `workerData` from `worker_threads` and must:
 3. Report progress via `parentPort.postMessage()`
 4. Signal completion with `{ type: 'done', workerId }`
 
-See `examples/basic-worker.js` inside the installed package for a complete, working template (hardened: stderr tail capture, stdin error handling, sub-64KB frame-buffer copies). If the MCP server is wired in, the `get_worker_template` tool returns the same contract plus the full template source.
+Start from `ffmpeg-render-pro init` (writes `examples/starter-worker.js` as `my-worker.js`; only `renderFrame(frameNum, buffer)` needs editing, the ffmpeg pipe, backpressure, progress, and done/error plumbing are already there). `examples/basic-worker.js` inside the installed package is the larger reference (particles, seeded RNG, fast-forward). If the MCP server is wired in, `get_worker_template` returns the contract plus both files' paths and the starter source.
 
 ---
 

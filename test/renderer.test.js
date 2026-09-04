@@ -295,6 +295,31 @@ lib.renderParallel({
       assert.ok(fs.existsSync(out), 'output rendered');
     });
 
+    // --- 9b. quiet:true with the DASHBOARD ON is also byte-clean ---
+    // Regression: renderParallel never passed silent to startDashboard, so
+    // the cyan "Dashboard: http://..." box reached stdout in quiet mode.
+    await step('quiet:true with dashboard:true writes zero bytes to stdout, URL goes to stderr', () => {
+      const out = path.join(tmp, 'quiet-dash.mp4');
+      const childScript = fixture('quiet-dash-child.js', `
+const lib = require(${JSON.stringify(path.join(ROOT, 'src', 'index.js'))});
+lib.renderParallel({
+  workerScript: ${JSON.stringify(BASIC_WORKER)},
+  outputPath: ${JSON.stringify(out)},
+  width: 64, height: 64, fps: 10, duration: 0.3,
+  workerCount: 1, seed: 1, quiet: true,
+  dashboard: true, autoOpen: false, dashboardLingerMs: 0, dashboardPort: 18790,
+}).then(
+  () => process.exit(0),
+  (err) => { process.stderr.write('CHILD FAIL: ' + err.message + '\\n'); process.exit(1); },
+);
+`);
+      const r = spawnSync('node', [childScript], { encoding: 'utf-8', timeout: 120000 });
+      assert.strictEqual(r.status, 0, `child exited ${r.status}: ${r.stderr}`);
+      assert.strictEqual(r.stdout, '', 'stdout is byte-clean with the dashboard on');
+      assert.ok(/Dashboard: http:\/\/127\.0\.0\.1:\d+/.test(r.stderr), 'dashboard URL announced on stderr');
+      assert.ok(fs.existsSync(out), 'output rendered');
+    });
+
     // --- 10. Signal handler accounting after a SUCCESSFUL render ---
     await step('successful render leaves SIGINT/SIGTERM listener counts unchanged', async () => {
       const sigintBefore = process.listenerCount('SIGINT');
